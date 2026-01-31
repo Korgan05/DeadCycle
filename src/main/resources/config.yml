@@ -119,3 +119,18 @@ miner_progress:
   level_xp_add_per_level: 40  # + к требованию на каждый уровень
   max_level: 10
   haste_max_level: 4          # максимум Haste (0=Haste I, 4=Haste V)
+
+# --- v0.5 base resources ---
+base_resources:
+  # сколько денег дается за 1 очко базы
+  money_per_point: 0.5
+
+  # общие очки базы
+  points: 0
+
+  # статистика по типам (для scoreboard)
+  by_type:
+    stone: 0
+    coal: 0
+    iron: 0
+    diamond: 0
