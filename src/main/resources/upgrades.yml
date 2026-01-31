@@ -1,0 +1,13 @@
+repair_speed:
+  level: 1
+  max_level: 5
+  base_cost: 200
+  cost_add: 150
+  amount_per_level: 2
+
+wall_hp:
+  level: 1
+  max_level: 5
+  base_cost: 300
+  cost_add: 200
+  multiplier_per_level: 0.25

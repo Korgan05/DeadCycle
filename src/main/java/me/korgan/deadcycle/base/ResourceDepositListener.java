@@ -10,14 +10,9 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.UUID;
-
 public class ResourceDepositListener implements Listener {
 
     private final DeadCyclePlugin plugin;
-    private final Map<UUID, Boolean> wasOnBase = new EnumMap<>(UUID.class); // простая защита от спама
 
     public ResourceDepositListener(DeadCyclePlugin plugin) {
         this.plugin = plugin;
@@ -33,14 +28,11 @@ public class ResourceDepositListener implements Listener {
         boolean before = plugin.base().isOnBase(e.getFrom());
         boolean now = plugin.base().isOnBase(e.getTo());
 
-        // Срабатывает только в момент входа в радиус
+        // Срабатывает только в момент входа в радиус базы
         if (before || !now) return;
 
-        // Только майнер получает деньги (можно расширить потом)
-        if (plugin.kit().getKit(p.getUniqueId()) != KitManager.Kit.MINER) {
-            // но ресурсы можно и не принимать от других — тут оставлю “не принимаем”
-            return;
-        }
+        // Только майнер сдаёт ресурсы и получает деньги
+        if (plugin.kit().getKit(p.getUniqueId()) != KitManager.Kit.MINER) return;
 
         depositMiner(p);
     }
@@ -50,7 +42,7 @@ public class ResourceDepositListener implements Listener {
 
         int totalPoints = 0;
 
-        // сколько очков по категориям (чтобы красиво написать)
+        // очки по категориям
         int stonePts = 0, coalPts = 0, ironPts = 0, diamondPts = 0;
 
         // перебираем инвентарь и забираем нужные предметы
@@ -69,6 +61,7 @@ public class ResourceDepositListener implements Listener {
             BaseResourceManager.ResourceType t = br.typeOf(m);
             if (t != null) {
                 br.addPoints(t, points);
+
                 if (t == BaseResourceManager.ResourceType.STONE) stonePts += points;
                 if (t == BaseResourceManager.ResourceType.COAL) coalPts += points;
                 if (t == BaseResourceManager.ResourceType.IRON) ironPts += points;
@@ -81,25 +74,22 @@ public class ResourceDepositListener implements Listener {
 
         if (totalPoints <= 0) return;
 
-        // деньги
-        double money = totalPoints * br.moneyPerPoint();
-        plugin.economy().addMoney(p.getUniqueId(), money);
+        // деньги (long), округляем
+        double moneyDouble = totalPoints * br.moneyPerPoint();
+        long money = Math.round(moneyDouble);
 
-        // сообщение
+        plugin.econ().give(p, money);
+
+        // сообщения
         p.sendMessage(ChatColor.GREEN + "Ты сдал ресурсы на базу: " + ChatColor.WHITE + "+" + totalPoints + " очков базы");
-        p.sendMessage(ChatColor.YELLOW + "Награда: " + ChatColor.WHITE + "+" + formatMoney(money) + "$");
+        p.sendMessage(ChatColor.YELLOW + "Награда: " + ChatColor.WHITE + "+" + money + "$");
 
-        // можно детальнее:
-        String detail = "";
-        if (stonePts > 0) detail += ChatColor.GRAY + "Камень +" + stonePts + "  ";
-        if (coalPts > 0) detail += ChatColor.GRAY + "Уголь +" + coalPts + "  ";
-        if (ironPts > 0) detail += ChatColor.GRAY + "Железо +" + ironPts + "  ";
-        if (diamondPts > 0) detail += ChatColor.GRAY + "Алмазы +" + diamondPts + "  ";
-        if (!detail.isEmpty()) p.sendMessage(detail);
-    }
-
-    private String formatMoney(double d) {
-        if (d == (long) d) return String.valueOf((long) d);
-        return String.format(java.util.Locale.US, "%.1f", d);
+        // детализация
+        StringBuilder detail = new StringBuilder();
+        if (stonePts > 0) detail.append(ChatColor.GRAY).append("Камень +").append(stonePts).append("  ");
+        if (coalPts > 0) detail.append(ChatColor.GRAY).append("Уголь +").append(coalPts).append("  ");
+        if (ironPts > 0) detail.append(ChatColor.GRAY).append("Железо +").append(ironPts).append("  ");
+        if (diamondPts > 0) detail.append(ChatColor.GRAY).append("Алмазы +").append(diamondPts).append("  ");
+        if (!detail.isEmpty()) p.sendMessage(detail.toString());
     }
 }

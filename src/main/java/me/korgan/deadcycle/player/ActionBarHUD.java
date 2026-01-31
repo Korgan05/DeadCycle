@@ -23,19 +23,15 @@ public class ActionBarHUD {
         task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             for (Player p : Bukkit.getOnlinePlayers()) {
                 long money = plugin.econ().getMoney(p.getUniqueId());
-
                 KitManager.Kit kit = plugin.kit().getKit(p.getUniqueId());
-                String kitName = (kit == null) ? "-" : kit.name();
 
-                int minerLvl = progress.getMinerLevel(p.getUniqueId());
-                int minerExp = progress.getMinerExp(p.getUniqueId());
-                int minerNeed = progress.needMinerExp(p.getUniqueId());
+                int lvl = progress.getPlayerLevel(p.getUniqueId());
+                String kitName = kit == null ? "-" : kit.name();
 
-                // эффекты китов (например Haste) поддерживаем живыми
-                progress.applyKitEffects(p);
-
-                String msg = "§6💰 " + money + " §7| §bKit: §f" + kitName
-                        + " §7| §a⛏ Miner: §f" + minerLvl + " §7(" + minerExp + "/" + minerNeed + ")";
+                String msg =
+                        "§6💰 " + money +
+                                " §7| §bKit: §f" + kitName +
+                                " §7| §aLVL: §f" + lvl;
 
                 p.sendActionBar(Component.text(msg.replace('§', '\u00A7')));
             }
@@ -43,9 +39,6 @@ public class ActionBarHUD {
     }
 
     public void stop() {
-        if (task != null) {
-            task.cancel();
-            task = null;
-        }
+        if (task != null) task.cancel();
     }
 }

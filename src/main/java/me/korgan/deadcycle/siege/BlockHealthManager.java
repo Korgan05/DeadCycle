@@ -20,34 +20,32 @@ public class BlockHealthManager {
         this.plugin = plugin;
     }
 
-    public void reload() {
-        // ничего хранить не нужно — hp в памяти
-    }
-
     private long key(Block b) {
         int x = b.getX();
         int y = b.getY();
         int z = b.getZ();
-        // простая упаковка координат в long
-        long k = (((long) x & 0x3FFFFFFL) << 38) | (((long) z & 0x3FFFFFFL) << 12) | ((long) y & 0xFFFL);
-        return k;
+        return (((long) x & 0x3FFFFFFL) << 38)
+                | (((long) z & 0x3FFFFFFL) << 12)
+                | ((long) y & 0xFFFL);
     }
 
     public int getMaxHp(Material m) {
-        return plugin.getConfig().getInt("blocks_hp." + m.name(), 0);
+        int base = plugin.getConfig().getInt("blocks_hp." + m.name(), 0);
+        if (base <= 0) return 0;
+
+        double mult = plugin.upgrades().wallHpMultiplier();
+        return (int) Math.round(base * mult);
     }
 
     public boolean isBreakable(Material m) {
         boolean whitelistOnly = plugin.getConfig().getBoolean("siege.whitelist_only", true);
         int mhp = getMaxHp(m);
         if (whitelistOnly) return mhp > 0;
-        // если не whitelist-only, ломаем всё кроме “не ломаемых”
         return m.isBlock() && m.isSolid();
     }
 
     public void damage(Block b, int amount) {
-        if (b == null) return;
-        if (b.getType() == Material.AIR) return;
+        if (b == null || b.getType() == Material.AIR) return;
 
         Material m = b.getType();
         int mhp = getMaxHp(m);
@@ -74,8 +72,7 @@ public class BlockHealthManager {
     }
 
     public void repair(Block b, int amount) {
-        if (b == null) return;
-        if (b.getType() == Material.AIR) return;
+        if (b == null || b.getType() == Material.AIR) return;
 
         Material m = b.getType();
         int mhp = getMaxHp(m);
@@ -88,14 +85,12 @@ public class BlockHealthManager {
 
         int cur = hp.getOrDefault(k, curMax);
         cur += Math.max(1, amount);
-        if (cur >= curMax) {
-            cur = curMax;
-        }
+        if (cur >= curMax) cur = curMax;
 
         hp.put(k, cur);
         showCracks(b, cur, curMax);
+
         if (cur == curMax) {
-            // полностью починили — убираем трещины
             hp.remove(k);
             maxHp.remove(k);
             clearCracks(b);
@@ -112,14 +107,13 @@ public class BlockHealthManager {
     }
 
     private void showCracks(Block b, int cur, int max) {
-        float progress = 1.0f - (cur / (float) max); // 0..1
+        float progress = 1.0f - (cur / (float) max);
         progress = Math.max(0f, Math.min(1f, progress));
 
-        // показываем трещины игрокам рядом
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (!p.isOnline()) continue;
             if (p.getWorld() != b.getWorld()) continue;
-            if (p.getLocation().distanceSquared(b.getLocation()) > (35 * 35)) continue;
+            if (p.getLocation().distanceSquared(b.getLocation()) > 35 * 35) continue;
 
             p.sendBlockDamage(b.getLocation(), progress);
         }
@@ -129,7 +123,7 @@ public class BlockHealthManager {
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (!p.isOnline()) continue;
             if (p.getWorld() != b.getWorld()) continue;
-            if (p.getLocation().distanceSquared(b.getLocation()) > (35 * 35)) continue;
+            if (p.getLocation().distanceSquared(b.getLocation()) > 35 * 35) continue;
 
             p.sendBlockDamage(b.getLocation(), 0f);
         }

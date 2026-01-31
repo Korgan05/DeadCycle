@@ -1,5 +1,5 @@
 name: DeadCycle
-version: 0.4.1
+version: 0.6
 main: me.korgan.deadcycle.DeadCyclePlugin
 api-version: "1.21"
 author: Korgan
@@ -24,6 +24,10 @@ commands:
   repair:
     description: Repair base blocks (Builder)
     usage: /repair
+
+  base:
+    description: Open base menu (only on base)
+    usage: /base
 
 permissions:
   deadcycle.admin:

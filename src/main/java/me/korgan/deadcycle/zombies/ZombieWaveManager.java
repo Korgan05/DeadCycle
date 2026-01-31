@@ -1,11 +1,7 @@
 package me.korgan.deadcycle.zombies;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.NamespacedKey;
-import org.bukkit.Registry;
-import org.bukkit.World;
+import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
@@ -20,180 +16,121 @@ public class ZombieWaveManager {
 
     private final DeadCyclePlugin plugin;
     private final Random rng = new Random();
-    private BukkitTask spawnTask;
+    private BukkitTask task;
+    private boolean spawning = false;
 
-    private final NamespacedKey zombieKey;
-    private boolean pluginSpawning = false;
+    private final NamespacedKey mark;
 
     public ZombieWaveManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
-        this.zombieKey = new NamespacedKey(plugin, "deadcycle_zombie");
+        this.mark = new NamespacedKey(plugin, "dc_zombie");
     }
 
-    public boolean isPluginSpawning() { return pluginSpawning; }
-    public NamespacedKey zombieMarkKey() { return zombieKey; }
+    public NamespacedKey zombieMarkKey() { return mark; }
+    public boolean isPluginSpawning() { return spawning; }
 
-    public void startNight(int dayCount) {
+    public void startNight(int day) {
         stopNight();
+
         if (!plugin.getConfig().getBoolean("zombies.enabled", true)) return;
 
         int base = plugin.getConfig().getInt("zombies.base_per_player", 2);
-        int add  = plugin.getConfig().getInt("zombies.per_night_add", 1);
-        int perPlayer = Math.max(1, base + Math.max(0, dayCount - 1) * add);
+        int add = plugin.getConfig().getInt("zombies.per_night_add", 1);
 
-        double hpBase  = plugin.getConfig().getDouble("difficulty.zombie_hp_base", 16.0);
-        double hpPer   = plugin.getConfig().getDouble("difficulty.zombie_hp_per_day", 1.2);
-        double dmgBase = plugin.getConfig().getDouble("difficulty.zombie_dmg_base", 2.0);
-        double dmgPer  = plugin.getConfig().getDouble("difficulty.zombie_dmg_per_day", 0.2);
+        // 🔥 мягкий рост
+        int perPlayer = Math.min(8, base + (day / 2) + add);
 
-        double hp  = hpBase  + dayCount * hpPer;
-        double dmg = dmgBase + dayCount * dmgPer;
+        double hp = plugin.getConfig().getDouble("difficulty.zombie_hp_base", 16)
+                + day * plugin.getConfig().getDouble("difficulty.zombie_hp_per_day", 1.2);
 
-        Attribute maxHealth = getAttribute("generic.max_health", "max_health");
-        Attribute attackDmg = getAttribute("generic.attack_damage", "attack_damage");
+        double dmg = plugin.getConfig().getDouble("difficulty.zombie_dmg_base", 2)
+                + day * plugin.getConfig().getDouble("difficulty.zombie_dmg_per_day", 0.2);
 
-        spawnTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            int online = Bukkit.getOnlinePlayers().size();
-            if (online <= 0) return;
+        task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (Bukkit.getOnlinePlayers().isEmpty()) return;
 
-            // если кто-то на базе — спавним вокруг базы за радиусом
             if (plugin.base().isEnabled() && plugin.base().hasAnyOnBase()) {
-                Location center = plugin.base().getCenter();
-                int total = perPlayer * online;
-
-                for (int i = 0; i < total; i++) {
-                    Location loc = randomSpawnAroundBaseOutsideRadius(center);
-                    if (loc == null) continue;
-                    spawnZombieClean(loc, hp, dmg, maxHealth, attackDmg);
+                Location c = plugin.base().getCenter();
+                for (int i = 0; i < perPlayer * Bukkit.getOnlinePlayers().size(); i++) {
+                    spawnZombie(c, hp, dmg, true);
                 }
-                return;
-            }
-
-            // иначе — вокруг игроков
-            for (Player p : Bukkit.getOnlinePlayers()) {
-                if (!p.isOnline() || p.isDead()) continue;
-
-                for (int i = 0; i < perPlayer; i++) {
-                    Location loc = randomSpawnNearPlayer(p.getLocation());
-                    if (loc == null) continue;
-                    spawnZombieClean(loc, hp, dmg, maxHealth, attackDmg);
+            } else {
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    for (int i = 0; i < perPlayer; i++) {
+                        spawnZombie(p.getLocation(), hp, dmg, false);
+                    }
                 }
             }
 
-        }, 40L, 20L * 20L);
+        }, 40L, 20L * 15L); // каждые 15 сек
+
     }
 
     public void stopNight() {
-        if (spawnTask != null) {
-            spawnTask.cancel();
-            spawnTask = null;
+        if (task != null) {
+            task.cancel();
+            task = null;
         }
     }
 
-    private void spawnZombieClean(Location loc, double hp, double dmg, Attribute maxHealth, Attribute attackDmg) {
-        World w = loc.getWorld();
+    private void spawnZombie(Location center, double hp, double dmg, boolean base) {
+        World w = center.getWorld();
         if (w == null) return;
 
+        Location loc = base
+                ? randomOutsideBase(center)
+                : randomNear(center);
+
+        if (loc == null) return;
+
         try {
-            pluginSpawning = true;
-
+            spawning = true;
             w.spawn(loc, Zombie.class, z -> {
-                // помечаем "наш"
-                z.getPersistentDataContainer().set(zombieKey, PersistentDataType.BYTE, (byte) 1);
-
-                // ✅ делаем "обычного" зомби: без предметов и брони
+                z.getPersistentDataContainer().set(mark, PersistentDataType.BYTE, (byte) 1);
+                z.setBaby(false);
                 z.setCanPickupItems(false);
+
                 EntityEquipment eq = z.getEquipment();
                 if (eq != null) {
-                    eq.setItemInMainHand(null);
-                    eq.setItemInOffHand(null);
-                    eq.setHelmet(null);
-                    eq.setChestplate(null);
-                    eq.setLeggings(null);
-                    eq.setBoots(null);
-
-                    // чтобы случайно не дропало/не подбирало
-                    eq.setHelmetDropChance(0f);
-                    eq.setChestplateDropChance(0f);
-                    eq.setLeggingsDropChance(0f);
-                    eq.setBootsDropChance(0f);
-                    eq.setItemInMainHandDropChance(0f);
-                    eq.setItemInOffHandDropChance(0f);
+                    eq.clear();
+                    eq.setItemInMainHandDropChance(0);
+                    eq.setHelmetDropChance(0);
                 }
 
-                // без детей
-                z.setBaby(false);
+                AttributeInstance mh = z.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+                if (mh != null) {
+                    mh.setBaseValue(hp);
+                    z.setHealth(hp);
+                }
 
-                // статы
-                if (maxHealth != null) {
-                    AttributeInstance a = z.getAttribute(maxHealth);
-                    if (a != null) {
-                        a.setBaseValue(hp);
-                        z.setHealth(Math.min(hp, a.getValue()));
-                    }
-                }
-                if (attackDmg != null) {
-                    AttributeInstance a = z.getAttribute(attackDmg);
-                    if (a != null) a.setBaseValue(dmg);
-                }
+                AttributeInstance ad = z.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+                if (ad != null) ad.setBaseValue(dmg);
             });
-
         } finally {
-            pluginSpawning = false;
+            spawning = false;
         }
     }
 
-    private Location randomSpawnAroundBaseOutsideRadius(Location baseCenter) {
-        World w = baseCenter.getWorld();
-        if (w == null) return null;
-
-        int baseRadius = plugin.base().getRadius();
-
-        int minOutside = plugin.getConfig().getInt("zombies.base_spawn_ring.min_outside", 10);
-        int maxOutside = plugin.getConfig().getInt("zombies.base_spawn_ring.max_outside", 28);
-
-        int minR = Math.max(1, baseRadius + minOutside);
-        int maxR = Math.max(minR + 1, baseRadius + maxOutside);
-
-        int yOff = plugin.getConfig().getInt("zombies.spawn_y_offset", 2);
-
-        double angle = rng.nextDouble() * Math.PI * 2;
-        double r = minR + rng.nextDouble() * (maxR - minR);
-
-        int x = (int) Math.round(baseCenter.getX() + Math.cos(angle) * r);
-        int z = (int) Math.round(baseCenter.getZ() + Math.sin(angle) * r);
-        int y = w.getHighestBlockYAt(x, z) + yOff;
-
-        Location loc = new Location(w, x + 0.5, y, z + 0.5);
-        if (loc.getBlock().isLiquid()) return null;
-        return loc;
+    private Location randomNear(Location c) {
+        double r = 12 + rng.nextInt(20);
+        double a = rng.nextDouble() * Math.PI * 2;
+        int x = (int) (c.getX() + Math.cos(a) * r);
+        int z = (int) (c.getZ() + Math.sin(a) * r);
+        int y = c.getWorld().getHighestBlockYAt(x, z) + 1;
+        return new Location(c.getWorld(), x + .5, y, z + .5);
     }
 
-    private Location randomSpawnNearPlayer(Location center) {
-        World w = center.getWorld();
-        if (w == null) return null;
+    private Location randomOutsideBase(Location c) {
+        int baseR = plugin.base().getRadius();
+        int min = baseR + 10;
+        int max = baseR + 30;
 
-        int minR = plugin.getConfig().getInt("zombies.spawn_radius_min", 12);
-        int maxR = plugin.getConfig().getInt("zombies.spawn_radius_max", 28);
-        int yOff = plugin.getConfig().getInt("zombies.spawn_y_offset", 2);
+        double r = min + rng.nextDouble() * (max - min);
+        double a = rng.nextDouble() * Math.PI * 2;
 
-        double angle = rng.nextDouble() * Math.PI * 2;
-        double r = minR + rng.nextDouble() * (maxR - minR);
-
-        int x = (int) Math.round(center.getX() + Math.cos(angle) * r);
-        int z = (int) Math.round(center.getZ() + Math.sin(angle) * r);
-        int y = w.getHighestBlockYAt(x, z) + yOff;
-
-        Location loc = new Location(w, x + 0.5, y, z + 0.5);
-        if (loc.getBlock().isLiquid()) return null;
-        return loc;
-    }
-
-    private Attribute getAttribute(String... keys) {
-        for (String k : keys) {
-            Attribute a = Registry.ATTRIBUTE.get(NamespacedKey.minecraft(k));
-            if (a != null) return a;
-        }
-        return null;
+        int x = (int) (c.getX() + Math.cos(a) * r);
+        int z = (int) (c.getZ() + Math.sin(a) * r);
+        int y = c.getWorld().getHighestBlockYAt(x, z) + 1;
+        return new Location(c.getWorld(), x + .5, y, z + .5);
     }
 }

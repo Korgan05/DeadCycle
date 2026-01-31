@@ -1,32 +1,55 @@
-phase:
-  day_seconds: 600
-  night_seconds: 300
+# ==============================
+# DeadCycle v0.6 — FULL CONFIG
+# ==============================
 
+# ------------------------------
+# Фазы дня / ночи
+# ------------------------------
+phase:
+  day_seconds: 600        # 10 минут
+  night_seconds: 300      # 5 минут
+
+# ------------------------------
+# Экономика
+# ------------------------------
 economy:
   start_money: 0
-  kill_zombie_reward: 5
+  kill_zombie_reward: 5   # награда за убийство зомби (мелочь, не основной доход)
 
+# ------------------------------
+# Сложность зомби (растёт по дням)
+# ------------------------------
 difficulty:
-  zombie_hp_base: 16.0
-  zombie_hp_per_day: 1.2
+  zombie_hp_base: 14.0
+  zombie_hp_per_day: 1.0
   zombie_dmg_base: 2.0
-  zombie_dmg_per_day: 0.2
+  zombie_dmg_per_day: 0.15
 
+# ------------------------------
+# Волны зомби
+# ------------------------------
 zombies:
   enabled: true
-  base_per_player: 2
+
+  # сколько зомби на игрока в начале
+  base_per_player: 1
+
+  # добавка каждые 2 дня
   per_night_add: 1
 
-  # если база активна и кто-то на базе — спавн вокруг базы, НО ЗА радиусом базы
+  # если игроки на базе → спавн за радиусом
   base_spawn_ring:
     min_outside: 10
-    max_outside: 28
+    max_outside: 30
 
-  # если на базе никого — вокруг игроков
+  # если не на базе → вокруг игроков
   spawn_radius_min: 12
   spawn_radius_max: 28
   spawn_y_offset: 2
 
+# ------------------------------
+# База
+# ------------------------------
 base:
   enabled: false
   world: world
@@ -36,50 +59,69 @@ base:
   radius: 30
   spawn_y_offset: 1
 
+# ------------------------------
+# Магазин (ТОЛЬКО ПОКУПКА)
+# ------------------------------
 shop:
-  sell:
-    COBBLESTONE: 1
-    COAL: 4
-    IRON_INGOT: 10
-    GOLD_INGOT: 18
-    DIAMOND: 60
   buy:
-    IRON_SWORD: 120
-    IRON_CHESTPLATE: 250
-    IRON_LEGGINGS: 220
-    IRON_HELMET: 160
-    IRON_BOOTS: 140
-    SHIELD: 80
-    BOW: 150
-    ARROW: 2
-    COOKED_BEEF: 3
-    ARROW_16: 25
-    COOKED_BEEF_16: 35
+    # оружие
+    STONE_SWORD: 35
+    IRON_SWORD: 160
+    DIAMOND_SWORD: 650
+    STONE_AXE: 45
+    SHIELD: 120
 
-# ---- v0.4 OSAДА ----
+    # броня железо
+    IRON_HELMET: 160
+    IRON_CHESTPLATE: 320
+    IRON_LEGGINGS: 280
+    IRON_BOOTS: 150
+
+    # броня алмаз
+    DIAMOND_HELMET: 520
+    DIAMOND_CHESTPLATE: 900
+    DIAMOND_LEGGINGS: 800
+    DIAMOND_BOOTS: 480
+
+    # дальний бой
+    BOW: 220
+    ARROW: 3
+    SPECTRAL_ARROW: 8
+    FISHING_ROD: 80
+
+    # еда
+    BREAD: 6
+    COOKED_CHICKEN: 10
+    COOKED_BEEF: 14
+    GOLDEN_APPLE: 250
+
+    # полезное
+    TORCH: 2
+    OAK_PLANKS: 2
+    COBBLESTONE: 1
+    CHEST: 40
+    CRAFTING_TABLE: 15
+
+# ------------------------------
+# Осада базы (ломание стен)
+# ------------------------------
 siege:
   enabled: true
   only_at_night: true
-
-  # осада НЕ с первой ночи:
   start_day: 3
 
-  # зона осады вокруг базы = base.radius + extra_radius
   extra_radius: 8
-
-  # как часто проверять (в тиках). 10 тиков = 0.5 сек
   tick_interval: 10
 
-  # урон по блоку за "удар"
   block_damage_base: 2
   block_damage_per_day: 0.3
 
-  # ломать блоки без дропа
   break_no_drops: true
-
-  # какие блоки зомби могут ломать (если true — только из списка ниже)
   whitelist_only: true
 
+# ------------------------------
+# HP блоков базы
+# ------------------------------
 blocks_hp:
   OAK_PLANKS: 30
   SPRUCE_PLANKS: 30
@@ -97,40 +139,72 @@ blocks_hp:
   OAK_FENCE: 20
   OAK_DOOR: 18
 
+# ------------------------------
+# Builder (ремонт)
+# ------------------------------
 builder:
-  # ремонт блоков
   repair_amount: 8
   repair_distance: 5
-
-  # награды
-  reward_money: 2
+  reward_money: 0
   reward_xp: 1
 
-# --- v0.4.1 mining regen + miner leveling ---
+# сколько очков базы тратится за 1 тик ремонта
+repair_cost:
+  points_per_tick: 10
+
+# ------------------------------
+# Реген шахты
+# ------------------------------
 regen_mining:
   enabled: true
-  restore_seconds: 90   # через сколько секунд руда/камень вернутся обратно
+  restore_seconds: 90
   only_outside_base: true
 
+# ------------------------------
+# Прокачка майнера
+# ------------------------------
 miner_progress:
   enabled: true
-  exp_per_block: 2            # опыт за 1 блок (камень/руда)
-  level_xp_base: 80           # сколько нужно на 1 уровень
-  level_xp_add_per_level: 40  # + к требованию на каждый уровень
+  exp_per_block: 2
+  level_xp_base: 80
+  level_xp_add_per_level: 40
   max_level: 10
-  haste_max_level: 4          # максимум Haste (0=Haste I, 4=Haste V)
+  haste_max_level: 4
 
-# --- v0.5 base resources ---
+# ------------------------------
+# Ресурсы базы (общие)
+# ------------------------------
 base_resources:
-  # сколько денег дается за 1 очко базы
   money_per_point: 0.5
 
-  # общие очки базы
   points: 0
 
-  # статистика по типам (для scoreboard)
   by_type:
     stone: 0
     coal: 0
     iron: 0
     diamond: 0
+
+# ------------------------------
+# Апгрейды базы
+# ------------------------------
+upgrades:
+  wall:
+    level: 0
+    max_level: 5
+    hp_per_level: 0.2
+    cost_base: 500
+    cost_add: 300
+
+  repair:
+    level: 0
+    max_level: 5
+    speed_per_level: 0.25
+    cost_base: 400
+    cost_add: 250
+
+# ------------------------------
+# GUI
+# ------------------------------
+base_menu:
+  enabled: true
