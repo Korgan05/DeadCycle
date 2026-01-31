@@ -1,4 +1,10 @@
 package me.korgan.deadcycle.siege;
 
-public class RepairListener {
+import me.korgan.deadcycle.DeadCyclePlugin;
+import org.bukkit.event.Listener;
+
+public class RepairListener implements Listener {
+    public RepairListener(DeadCyclePlugin plugin, BlockHealthManager blockHealth) {
+        // intentionally empty: ремонт только через /repair
+    }
 }

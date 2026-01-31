@@ -1,0 +1,30 @@
+name: DeadCycle
+version: 0.4.1
+main: me.korgan.deadcycle.DeadCyclePlugin
+api-version: "1.21"
+author: Korgan
+
+commands:
+  dc:
+    description: DeadCycle admin/main command
+    usage: /dc <start|stop|setphase|reload|setbase|siege>
+
+  shop:
+    description: Open DeadCycle shop
+    usage: /shop
+
+  kit:
+    description: Open kit menu
+    usage: /kit
+
+  money:
+    description: Show balance
+    usage: /money
+
+  repair:
+    description: Repair base blocks (Builder)
+    usage: /repair
+
+permissions:
+  deadcycle.admin:
+    default: op

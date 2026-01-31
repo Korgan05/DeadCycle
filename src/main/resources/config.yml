@@ -1,0 +1,121 @@
+phase:
+  day_seconds: 600
+  night_seconds: 300
+
+economy:
+  start_money: 0
+  kill_zombie_reward: 5
+
+difficulty:
+  zombie_hp_base: 16.0
+  zombie_hp_per_day: 1.2
+  zombie_dmg_base: 2.0
+  zombie_dmg_per_day: 0.2
+
+zombies:
+  enabled: true
+  base_per_player: 2
+  per_night_add: 1
+
+  # если база активна и кто-то на базе — спавн вокруг базы, НО ЗА радиусом базы
+  base_spawn_ring:
+    min_outside: 10
+    max_outside: 28
+
+  # если на базе никого — вокруг игроков
+  spawn_radius_min: 12
+  spawn_radius_max: 28
+  spawn_y_offset: 2
+
+base:
+  enabled: false
+  world: world
+  x: 0
+  y: 64
+  z: 0
+  radius: 30
+  spawn_y_offset: 1
+
+shop:
+  sell:
+    COBBLESTONE: 1
+    COAL: 4
+    IRON_INGOT: 10
+    GOLD_INGOT: 18
+    DIAMOND: 60
+  buy:
+    IRON_SWORD: 120
+    IRON_CHESTPLATE: 250
+    IRON_LEGGINGS: 220
+    IRON_HELMET: 160
+    IRON_BOOTS: 140
+    SHIELD: 80
+    BOW: 150
+    ARROW: 2
+    COOKED_BEEF: 3
+    ARROW_16: 25
+    COOKED_BEEF_16: 35
+
+# ---- v0.4 OSAДА ----
+siege:
+  enabled: true
+  only_at_night: true
+
+  # осада НЕ с первой ночи:
+  start_day: 3
+
+  # зона осады вокруг базы = base.radius + extra_radius
+  extra_radius: 8
+
+  # как часто проверять (в тиках). 10 тиков = 0.5 сек
+  tick_interval: 10
+
+  # урон по блоку за "удар"
+  block_damage_base: 2
+  block_damage_per_day: 0.3
+
+  # ломать блоки без дропа
+  break_no_drops: true
+
+  # какие блоки зомби могут ломать (если true — только из списка ниже)
+  whitelist_only: true
+
+blocks_hp:
+  OAK_PLANKS: 30
+  SPRUCE_PLANKS: 30
+  BIRCH_PLANKS: 30
+  JUNGLE_PLANKS: 30
+  ACACIA_PLANKS: 30
+  DARK_OAK_PLANKS: 30
+  MANGROVE_PLANKS: 30
+  CHERRY_PLANKS: 30
+
+  COBBLESTONE: 60
+  STONE_BRICKS: 80
+  BRICKS: 70
+
+  OAK_FENCE: 20
+  OAK_DOOR: 18
+
+builder:
+  # ремонт блоков
+  repair_amount: 8
+  repair_distance: 5
+
+  # награды
+  reward_money: 2
+  reward_xp: 1
+
+# --- v0.4.1 mining regen + miner leveling ---
+regen_mining:
+  enabled: true
+  restore_seconds: 90   # через сколько секунд руда/камень вернутся обратно
+  only_outside_base: true
+
+miner_progress:
+  enabled: true
+  exp_per_block: 2            # опыт за 1 блок (камень/руда)
+  level_xp_base: 80           # сколько нужно на 1 уровень
+  level_xp_add_per_level: 40  # + к требованию на каждый уровень
+  max_level: 10
+  haste_max_level: 4          # максимум Haste (0=Haste I, 4=Haste V)
