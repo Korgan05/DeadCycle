@@ -19,12 +19,9 @@ public class BaseBuildProtectionListener implements Listener {
     public void onPlace(BlockPlaceEvent e) {
         if (!plugin.base().isEnabled()) return;
 
-        // запрет только в радиусе базы
         if (plugin.base().isOnBase(e.getBlockPlaced().getLocation())) {
-            // можно дать bypass админам
             Player p = e.getPlayer();
-            if (p.hasPermission("deadcycle.admin")) return;
-
+            if (p.hasPermission("deadcycle.admin")) return; // bypass админам
             e.setCancelled(true);
         }
     }
@@ -33,12 +30,9 @@ public class BaseBuildProtectionListener implements Listener {
     public void onBreak(BlockBreakEvent e) {
         if (!plugin.base().isEnabled()) return;
 
-        // запрет только в радиусе базы
         if (plugin.base().isOnBase(e.getBlock().getLocation())) {
-            // можно дать bypass админам
             Player p = e.getPlayer();
-            if (p.hasPermission("deadcycle.admin")) return;
-
+            if (p.hasPermission("deadcycle.admin")) return; // bypass админам
             e.setCancelled(true);
         }
     }

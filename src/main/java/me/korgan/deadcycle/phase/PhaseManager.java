@@ -3,6 +3,7 @@ package me.korgan.deadcycle.phase;
 import me.korgan.deadcycle.DeadCyclePlugin;
 import me.korgan.deadcycle.siege.SiegeManager;
 import org.bukkit.Bukkit;
+import org.bukkit.GameRule;
 import org.bukkit.World;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
@@ -83,7 +84,14 @@ public class PhaseManager {
     public void forcePhase(String phaseName) {
         if (phaseName == null) return;
         if (phaseName.equalsIgnoreCase("day")) switchToDay(false);
-        if (phaseName.equalsIgnoreCase("night")) switchToNight();
+        else if (phaseName.equalsIgnoreCase("night")) switchToNight();
+    }
+
+    private void applyWorldRulesAndTime(long time) {
+        for (World w : Bukkit.getWorlds()) {
+            w.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, false); // 🔥 важно
+            w.setTime(time);
+        }
     }
 
     private void switchToDay(boolean first) {
@@ -97,7 +105,7 @@ public class PhaseManager {
 
         secondsLeft = plugin.getConfig().getInt("phase.day_seconds", 600);
 
-        for (World w : Bukkit.getWorlds()) w.setTime(1000);
+        applyWorldRulesAndTime(1000);
         bar.setColor(BarColor.GREEN);
     }
 
@@ -106,12 +114,11 @@ public class PhaseManager {
 
         secondsLeft = plugin.getConfig().getInt("phase.night_seconds", 300);
 
-        for (World w : Bukkit.getWorlds()) w.setTime(13000);
+        applyWorldRulesAndTime(13000);
         bar.setColor(BarColor.PURPLE);
 
         plugin.zombie().startNight(dayCount);
 
-        // v0.4: осада начинается не сразу (start_day)
         siege.onNightStart(dayCount);
     }
 }

@@ -11,70 +11,74 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.potion.PotionType;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class ShopGUI implements Listener {
 
     private final DeadCyclePlugin plugin;
     private final String title = "§aDeadCycle Магазин";
-    private final NamespacedKey shopKey;
+
+    // слоты
+    private final int[] buySlots  = {10, 11, 12, 13, 14, 15, 16};
+    private final int[] sellSlots = {19, 20, 21, 22, 23};
+
+    private static final int BASE_SCROLL_SLOT = 25;
+
+    private final NamespacedKey baseScrollKey;
+
+    // что показываем
+    private final List<Material> buyShow = List.of(
+            Material.IRON_SWORD,
+            Material.SHIELD,
+            Material.BOW,
+            Material.ARROW,
+            Material.COOKED_BEEF,
+            Material.GOLDEN_APPLE,
+            Material.POTION
+    );
+
+    private final List<Material> sellShow = List.of(
+            Material.COBBLESTONE, Material.COAL, Material.IRON_INGOT, Material.GOLD_INGOT, Material.DIAMOND
+    );
 
     public ShopGUI(DeadCyclePlugin plugin) {
         this.plugin = plugin;
-        this.shopKey = new NamespacedKey(plugin, "dc_shop_key");
+        this.baseScrollKey = new NamespacedKey(plugin, "base_scroll");
     }
 
     public void open(Player p) {
-        Inventory inv = Bukkit.createInventory(null, 54, title);
+        Inventory inv = Bukkit.createInventory(null, 27, title);
 
-        // шапка
-        inv.setItem(4, info(Material.EMERALD, "§eБаланс: §6" + plugin.econ().getMoney(p.getUniqueId())));
+        inv.setItem(4, named(Material.EMERALD, "§eБаланс: §6" + plugin.econ().getMoney(p.getUniqueId())));
+        inv.setItem(8, named(Material.BARRIER, "§cЗакрыть"));
 
-        // разделители
-        for (int i = 0; i < 54; i++) {
-            if (inv.getItem(i) == null) inv.setItem(i, filler());
+        // покупка
+        for (int i = 0; i < Math.min(buyShow.size(), buySlots.length); i++) {
+            Material m = buyShow.get(i);
+
+            // potion — будет специальная цена
+            if (m == Material.POTION) {
+                long price = plugin.getConfig().getLong("shop.buy.POTION_HEALING", 0);
+                inv.setItem(buySlots[i], priced(Material.POTION, "§bЗелье лечения", "§7Цена: §e" + price));
+                continue;
+            }
+
+            long price = plugin.getConfig().getLong("shop.buy." + m.name(), 0);
+            inv.setItem(buySlots[i], priced(m, "§bКупить: §f" + nice(m), "§7Цена: §e" + price));
         }
 
-        // чистим рабочую зону
-        clear(inv, 10, 16);
-        clear(inv, 19, 25);
-        clear(inv, 28, 34);
-        clear(inv, 37, 43);
+        // продажа
+        for (int i = 0; i < Math.min(sellShow.size(), sellSlots.length); i++) {
+            Material m = sellShow.get(i);
+            long price = plugin.getConfig().getLong("shop.sell." + m.name(), 0);
+            inv.setItem(sellSlots[i], priced(m, "§aПродать: §f" + nice(m), "§7Цена за 1: §e" + price));
+        }
 
-        // ===== оружие/броня =====
-        putBuy(inv, 10, matItem(Material.IRON_SWORD, "§bЖелезный меч"), "IRON_SWORD", 1);
-        putBuy(inv, 11, matItem(Material.SHIELD, "§bЩит"), "SHIELD", 1);
-        putBuy(inv, 12, matItem(Material.BOW, "§bЛук"), "BOW", 1);
-
-        putBuy(inv, 19, matItem(Material.IRON_HELMET, "§bЖелезный шлем"), "IRON_HELMET", 1);
-        putBuy(inv, 20, matItem(Material.IRON_CHESTPLATE, "§bЖелезный нагрудник"), "IRON_CHESTPLATE", 1);
-        putBuy(inv, 21, matItem(Material.IRON_LEGGINGS, "§bЖелезные поножи"), "IRON_LEGGINGS", 1);
-        putBuy(inv, 22, matItem(Material.IRON_BOOTS, "§bЖелезные ботинки"), "IRON_BOOTS", 1);
-
-        // ===== стрелы/еда =====
-        putBuy(inv, 14, matItem(Material.ARROW, "§aСтрела"), "ARROW", 1);
-        putBuy(inv, 15, packItem(Material.ARROW, "§aСтрелы x16"), "ARROW_16", 16);
-        putBuy(inv, 16, packItem(Material.ARROW, "§aСтрелы x64"), "ARROW_64", 64);
-
-        putBuy(inv, 23, matItem(Material.BREAD, "§6Хлеб"), "BREAD", 1);
-        putBuy(inv, 24, matItem(Material.COOKED_CHICKEN, "§6Курица"), "COOKED_CHICKEN", 1);
-        putBuy(inv, 25, matItem(Material.COOKED_BEEF, "§6Стейк"), "COOKED_BEEF", 1);
-
-        putBuy(inv, 32, packItem(Material.BREAD, "§6Еда x16 (хлеб)"), "FOOD_16_BREAD", 16);
-        putBuy(inv, 33, packItem(Material.COOKED_BEEF, "§6Еда x16 (стейк)"), "FOOD_16_BEEF", 16);
-
-        putBuy(inv, 34, matItem(Material.GOLDEN_APPLE, "§eЗолотое яблоко"), "GOLDEN_APPLE", 1);
-
-        // ===== зелья =====
-        putBuy(inv, 37, potionItem("§dЗелье лечения", PotionType.HEALING), "POTION_HEALING", 1);
-        putBuy(inv, 38, potionItem("§dЗелье скорости", PotionType.SWIFTNESS), "POTION_SWIFTNESS", 1);
-        putBuy(inv, 39, potionItem("§dЗелье силы", PotionType.STRENGTH), "POTION_STRENGTH", 1);
-        putBuy(inv, 40, potionItem("§dЗелье регена", PotionType.REGENERATION), "POTION_REGEN", 1);
+        // свиток телепорта на базу (PAPER)
+        long scrollPrice = plugin.getConfig().getLong("shop.buy.BASE_SCROLL", 1000);
+        inv.setItem(BASE_SCROLL_SLOT, baseScrollItem(scrollPrice));
 
         p.openInventory(inv);
     }
@@ -85,159 +89,152 @@ public class ShopGUI implements Listener {
         e.setCancelled(true);
 
         if (!(e.getWhoClicked() instanceof Player p)) return;
+        int slot = e.getRawSlot();
+        ItemStack clicked = e.getCurrentItem();
+        if (clicked == null || clicked.getType() == Material.AIR) return;
 
-        ItemStack it = e.getCurrentItem();
-        if (it == null || it.getType() == Material.AIR) return;
-
-        String key = getKey(it);
-        if (key == null) return;
-
-        long price = plugin.getConfig().getLong("shop.buy." + key, -1);
-        if (price < 0) {
-            p.sendMessage("§cЦена не настроена: §f" + key);
+        if (slot == 8) { // close
+            p.closeInventory();
             return;
         }
 
-        if (!plugin.econ().has(p, price)) {
-            p.sendMessage("§cНедостаточно денег.");
+        // BASE_SCROLL
+        if (slot == BASE_SCROLL_SLOT) {
+            long price = plugin.getConfig().getLong("shop.buy.BASE_SCROLL", 1000);
+            if (price <= 0) return;
+            if (!plugin.econ().has(p, price)) { p.sendMessage("§cНедостаточно денег."); return; }
+
+            plugin.econ().take(p, price);
+            p.getInventory().addItem(createTaggedScroll(1));
+            p.sendMessage("§dКуплено: §fСвиток телепорта на базу §7за §e" + price);
+            open(p);
             return;
         }
 
-        plugin.econ().take(p, price);
+        // Продажа
+        for (int s : sellSlots) {
+            if (slot == s) {
+                Material m = clicked.getType();
+                long price = plugin.getConfig().getLong("shop.sell." + m.name(), 0);
+                if (price <= 0) { p.sendMessage("§cНельзя продать."); return; }
+                if (!removeOne(p, m)) { p.sendMessage("§cНет ресурса."); return; }
+                plugin.econ().give(p, price);
+                p.sendMessage("§aПродано 1x §f" + nice(m) + " §7за §e" + price);
+                open(p);
+                return;
+            }
+        }
 
-        ItemStack give = buildGiveItem(key, it);
-        int amount = getAmount(it);
+        // Покупка
+        for (int s : buySlots) {
+            if (slot != s) continue;
 
-        give.setAmount(Math.max(1, amount));
-        p.getInventory().addItem(give);
+            Material m = clicked.getType();
 
-        p.sendMessage("§aКуплено: §f" + strip(it) + " §7за §e" + price + "$");
-        open(p);
+            // potion special
+            if (m == Material.POTION) {
+                long price = plugin.getConfig().getLong("shop.buy.POTION_HEALING", 0);
+                if (price <= 0) { p.sendMessage("§cНельзя купить."); return; }
+                if (!plugin.econ().has(p, price)) { p.sendMessage("§cНедостаточно денег."); return; }
+
+                plugin.econ().take(p, price);
+                p.getInventory().addItem(new ItemStack(Material.POTION, 1));
+                p.sendMessage("§bКуплено: §fзелье лечения §7за §e" + price);
+                open(p);
+                return;
+            }
+
+            long price = plugin.getConfig().getLong("shop.buy." + m.name(), 0);
+            if (price <= 0) { p.sendMessage("§cНельзя купить."); return; }
+            if (!plugin.econ().has(p, price)) { p.sendMessage("§cНедостаточно денег."); return; }
+
+            plugin.econ().take(p, price);
+
+            int amount = 1;
+            if (m == Material.ARROW) amount = 16;
+            if (m == Material.COOKED_BEEF) amount = 8;
+
+            p.getInventory().addItem(new ItemStack(m, amount));
+            p.sendMessage("§bКуплено: §f" + nice(m) + " x" + amount + " §7за §e" + price);
+            open(p);
+            return;
+        }
+    }
+
+    // ===== scroll item =====
+    private ItemStack baseScrollItem(long price) {
+        ItemStack it = createTaggedScroll(1);
+        ItemMeta meta = it.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName("§dСвиток: телепорт на базу");
+            meta.setLore(Arrays.asList(
+                    "§7ПКМ — телепорт на базу",
+                    "§7Одноразовый предмет",
+                    "§7Цена: §e" + price
+            ));
+            it.setItemMeta(meta);
+        }
+        return it;
+    }
+
+    private ItemStack createTaggedScroll(int amount) {
+        ItemStack it = new ItemStack(Material.PAPER, amount);
+        ItemMeta meta = it.getItemMeta();
+        if (meta != null) {
+            meta.getPersistentDataContainer().set(baseScrollKey, PersistentDataType.BYTE, (byte) 1);
+            meta.setDisplayName("§dСвиток: телепорт на базу");
+            it.setItemMeta(meta);
+        }
+        return it;
+    }
+
+    public boolean isBaseScroll(ItemStack it) {
+        if (it == null || it.getType() != Material.PAPER) return false;
+        ItemMeta meta = it.getItemMeta();
+        if (meta == null) return false;
+        Byte v = meta.getPersistentDataContainer().get(baseScrollKey, PersistentDataType.BYTE);
+        return v != null && v == (byte) 1;
+    }
+
+    public void consumeOne(Player p, ItemStack inHand) {
+        if (inHand.getAmount() <= 1) p.getInventory().setItemInMainHand(null);
+        else inHand.setAmount(inHand.getAmount() - 1);
     }
 
     // ===== helpers =====
-
-    private void putBuy(Inventory inv, int slot, ItemStack display, String key, int amount) {
-        long price = plugin.getConfig().getLong("shop.buy." + key, -1);
-
-        ItemMeta meta = display.getItemMeta();
-        if (meta != null) {
-            List<String> lore = new ArrayList<>();
-            lore.add("§7Цена: §e" + (price >= 0 ? price : "?") + "$");
-            lore.add("§8Клик — купить");
-            meta.setLore(lore);
-
-            meta.getPersistentDataContainer().set(shopKey, PersistentDataType.STRING, key);
-            meta.getPersistentDataContainer().set(new NamespacedKey(plugin, "dc_shop_amount"),
-                    PersistentDataType.INTEGER, amount);
-
-            display.setItemMeta(meta);
-        }
-        inv.setItem(slot, display);
-    }
-
-    private ItemStack buildGiveItem(String key, ItemStack clicked) {
-        // наборы
-        if (key.equals("ARROW_16") || key.equals("ARROW_64") || key.equals("ARROW")) return new ItemStack(Material.ARROW);
-        if (key.equals("FOOD_16_BREAD") || key.equals("BREAD")) return new ItemStack(Material.BREAD);
-        if (key.equals("FOOD_16_BEEF") || key.equals("COOKED_BEEF")) return new ItemStack(Material.COOKED_BEEF);
-        if (key.equals("COOKED_CHICKEN")) return new ItemStack(Material.COOKED_CHICKEN);
-
-        // зелья
-        if (key.startsWith("POTION_")) {
-            // берём “как на витрине”
-            ItemStack potion = clicked.clone();
-            potion.setAmount(1);
-            // убираем лишние ключи из меты
-            ItemMeta meta = potion.getItemMeta();
-            if (meta != null) {
-                meta.getPersistentDataContainer().remove(shopKey);
-                meta.getPersistentDataContainer().remove(new NamespacedKey(plugin, "dc_shop_amount"));
-                potion.setItemMeta(meta);
-            }
-            return potion;
-        }
-
-        // остальное по названию материала
-        try {
-            Material m = Material.valueOf(key);
-            return new ItemStack(m);
-        } catch (IllegalArgumentException ex) {
-            // fallback
-            return new ItemStack(clicked.getType());
-        }
-    }
-
-    private String getKey(ItemStack it) {
+    private ItemStack named(Material m, String name) {
+        ItemStack it = new ItemStack(m);
         ItemMeta meta = it.getItemMeta();
-        if (meta == null) return null;
-        return meta.getPersistentDataContainer().get(shopKey, PersistentDataType.STRING);
+        if (meta != null) { meta.setDisplayName(name); it.setItemMeta(meta); }
+        return it;
     }
 
-    private int getAmount(ItemStack it) {
-        ItemMeta meta = it.getItemMeta();
-        if (meta == null) return 1;
-        Integer a = meta.getPersistentDataContainer().get(new NamespacedKey(plugin, "dc_shop_amount"),
-                PersistentDataType.INTEGER);
-        return (a == null ? 1 : a);
-    }
-
-    private ItemStack matItem(Material m, String name) {
+    private ItemStack priced(Material m, String name, String loreLine) {
         ItemStack it = new ItemStack(m);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
             meta.setDisplayName(name);
+            meta.setLore(Collections.singletonList(loreLine));
             it.setItemMeta(meta);
         }
         return it;
     }
 
-    private ItemStack packItem(Material m, String name) {
-        return matItem(m, name);
-    }
+    private boolean removeOne(Player p, Material m) {
+        for (int i = 0; i < p.getInventory().getSize(); i++) {
+            ItemStack it = p.getInventory().getItem(i);
+            if (it == null) continue;
+            if (it.getType() != m) continue;
 
-    private ItemStack potionItem(String name, PotionType type) {
-        ItemStack it = new ItemStack(Material.POTION);
-        ItemMeta im = it.getItemMeta();
-        if (im instanceof PotionMeta pm) {
-            pm.setDisplayName(name);
-            pm.setBasePotionType(type);
-            it.setItemMeta(pm);
-        } else if (im != null) {
-            im.setDisplayName(name);
-            it.setItemMeta(im);
+            int amount = it.getAmount();
+            if (amount <= 1) p.getInventory().setItem(i, null);
+            else it.setAmount(amount - 1);
+            return true;
         }
-        return it;
+        return false;
     }
 
-    private ItemStack filler() {
-        ItemStack it = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        ItemMeta meta = it.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(" ");
-            it.setItemMeta(meta);
-        }
-        return it;
-    }
-
-    private ItemStack info(Material m, String name) {
-        ItemStack it = new ItemStack(m);
-        ItemMeta meta = it.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            it.setItemMeta(meta);
-        }
-        return it;
-    }
-
-    private void clear(Inventory inv, int from, int to) {
-        for (int i = from; i <= to; i++) inv.setItem(i, null);
-    }
-
-    private String strip(ItemStack it) {
-        ItemMeta meta = it.getItemMeta();
-        if (meta == null || meta.displayName() == null) return it.getType().name();
-        // для Paper: просто вернём название через legacy
-        return meta.getDisplayName();
+    private String nice(Material m) {
+        return m.name().toLowerCase(Locale.ROOT).replace('_', ' ');
     }
 }

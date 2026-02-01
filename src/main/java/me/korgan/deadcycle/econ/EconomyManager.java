@@ -1,6 +1,8 @@
 package me.korgan.deadcycle.econ;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.KitManager;
+import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -59,9 +61,19 @@ public class EconomyManager implements Listener {
         Player killer = e.getEntity().getKiller();
         if (killer == null) return;
 
-        if (e.getEntityType().name().equalsIgnoreCase("ZOMBIE")) {
-            long reward = plugin.getConfig().getLong("economy.kill_zombie_reward", 5);
+        if (!e.getEntityType().name().equalsIgnoreCase("ZOMBIE")) return;
+
+        long reward = plugin.getConfig().getLong("economy.kill_zombie_reward", 5);
+        if (reward > 0) {
             give(killer, reward);
+            killer.sendMessage(ChatColor.GREEN + "Зомби убит! +" + ChatColor.GOLD + reward + "$");
+        }
+
+        // XP бойцу за убийство
+        KitManager.Kit kit = plugin.kit().getKit(killer.getUniqueId());
+        if (kit == KitManager.Kit.FIGHTER) {
+            int exp = plugin.getConfig().getInt("kit_xp.fighter.exp_per_zombie", 2);
+            if (exp > 0) plugin.progress().addFighterExp(killer, exp);
         }
     }
 }

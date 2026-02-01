@@ -13,11 +13,25 @@ public class BlockHealthManager {
 
     private final DeadCyclePlugin plugin;
 
+    // hp для поврежденных блоков (которые еще существуют)
     private final Map<Long, Integer> hp = new HashMap<>();
     private final Map<Long, Integer> maxHp = new HashMap<>();
 
+    // НОВОЕ: сломанные блоки (AIR), которые можно восстановить ремонтом
+    private final Map<Long, BrokenInfo> broken = new HashMap<>();
+
     public BlockHealthManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
+    }
+
+    private static class BrokenInfo {
+        final Material original;
+        final int maxHp;
+
+        BrokenInfo(Material original, int maxHp) {
+            this.original = original;
+            this.maxHp = maxHp;
+        }
     }
 
     private long key(Block b) {
@@ -44,10 +58,38 @@ public class BlockHealthManager {
         return m.isBlock() && m.isSolid();
     }
 
+    // ===== RepairGUI stats =====
+    public int getDamagedBlocksCount() {
+        // поврежденные + полностью сломанные (AIR)
+        return hp.size() + broken.size();
+    }
+
+    public int getTotalMissingHp() {
+        int sum = 0;
+
+        // поврежденные блоки: недостающее hp
+        for (Map.Entry<Long, Integer> e : hp.entrySet()) {
+            long k = e.getKey();
+            int cur = e.getValue();
+            int mx = maxHp.getOrDefault(k, cur);
+            sum += Math.max(0, mx - cur);
+        }
+
+        // сломанные блоки: считаем как полный maxHp
+        for (BrokenInfo bi : broken.values()) {
+            sum += Math.max(0, bi.maxHp);
+        }
+
+        return sum;
+    }
+    // ===========================
+
     public void damage(Block b, int amount) {
-        if (b == null || b.getType() == Material.AIR) return;
+        if (b == null) return;
 
         Material m = b.getType();
+        if (m == Material.AIR) return;
+
         int mhp = getMaxHp(m);
         if (mhp <= 0) return;
 
@@ -60,7 +102,11 @@ public class BlockHealthManager {
         cur -= Math.max(1, amount);
 
         if (cur <= 0) {
+            // фиксируем, что блок сломан — его можно восстановить
+            broken.put(k, new BrokenInfo(m, curMax));
+
             breakBlockNoDrops(b);
+
             hp.remove(k);
             maxHp.remove(k);
             clearCracks(b);
@@ -72,18 +118,33 @@ public class BlockHealthManager {
     }
 
     public void repair(Block b, int amount) {
-        if (b == null || b.getType() == Material.AIR) return;
+        if (b == null) return;
+
+        long k = key(b);
+
+        // НОВОЕ: если блок AIR, но он в списке сломанных — восстанавливаем
+        if (b.getType() == Material.AIR) {
+            BrokenInfo bi = broken.get(k);
+            if (bi == null) return;
+
+            // восстановили блок полностью
+            b.setType(bi.original, false);
+            broken.remove(k);
+
+            // после восстановления — трещин нет
+            clearCracks(b);
+            return;
+        }
 
         Material m = b.getType();
         int mhp = getMaxHp(m);
         if (mhp <= 0) return;
 
-        long k = key(b);
-
         int curMax = maxHp.getOrDefault(k, mhp);
         maxHp.putIfAbsent(k, curMax);
 
         int cur = hp.getOrDefault(k, curMax);
+
         cur += Math.max(1, amount);
         if (cur >= curMax) cur = curMax;
 

@@ -8,12 +8,14 @@ import org.bukkit.Registry;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Zombie;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.util.Comparator;
 import java.util.Random;
 
 public class ZombieWaveManager {
@@ -21,6 +23,7 @@ public class ZombieWaveManager {
     private final DeadCyclePlugin plugin;
     private final Random rng = new Random();
     private BukkitTask spawnTask;
+    private BukkitTask targetTask;
 
     private final NamespacedKey zombieKey;
     private boolean pluginSpawning = false;
@@ -51,7 +54,11 @@ public class ZombieWaveManager {
 
         Attribute maxHealth = getAttribute("generic.max_health", "max_health");
         Attribute attackDmg = getAttribute("generic.attack_damage", "attack_damage");
+        Attribute followRange = getAttribute("generic.follow_range", "follow_range");
 
+        double follow = plugin.getConfig().getDouble("zombies.follow_range", 48.0);
+
+        // волны
         spawnTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             int online = Bukkit.getOnlinePlayers().size();
             if (online <= 0) return;
@@ -64,7 +71,7 @@ public class ZombieWaveManager {
                 for (int i = 0; i < total; i++) {
                     Location loc = randomSpawnAroundBaseOutsideRadius(center);
                     if (loc == null) continue;
-                    spawnZombieClean(loc, hp, dmg, maxHealth, attackDmg);
+                    spawnZombieClean(loc, hp, dmg, follow, maxHealth, attackDmg, followRange);
                 }
                 return;
             }
@@ -76,11 +83,15 @@ public class ZombieWaveManager {
                 for (int i = 0; i < perPlayer; i++) {
                     Location loc = randomSpawnNearPlayer(p.getLocation());
                     if (loc == null) continue;
-                    spawnZombieClean(loc, hp, dmg, maxHealth, attackDmg);
+                    spawnZombieClean(loc, hp, dmg, follow, maxHealth, attackDmg, followRange);
                 }
             }
 
         }, 40L, 20L * 20L);
+
+        // “видеть через стены”: периодически принудительно назначаем цель ближайшему игроку
+        int scanSeconds = Math.max(1, plugin.getConfig().getInt("zombies.target_scan_seconds", 2));
+        targetTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> forceTargets(follow), 20L, scanSeconds * 20L);
     }
 
     public void stopNight() {
@@ -88,9 +99,37 @@ public class ZombieWaveManager {
             spawnTask.cancel();
             spawnTask = null;
         }
+        if (targetTask != null) {
+            targetTask.cancel();
+            targetTask = null;
+        }
     }
 
-    private void spawnZombieClean(Location loc, double hp, double dmg, Attribute maxHealth, Attribute attackDmg) {
+    private void forceTargets(double followRange) {
+        for (World w : Bukkit.getWorlds()) {
+            for (Entity ent : w.getEntities()) {
+                if (!(ent instanceof Zombie z)) continue;
+
+                Byte mark = z.getPersistentDataContainer().get(zombieKey, PersistentDataType.BYTE);
+                if (mark == null || mark != (byte) 1) continue;
+
+                if (z.isDead()) continue;
+
+                Player nearest = Bukkit.getOnlinePlayers().stream()
+                        .filter(p -> p.isOnline() && !p.isDead() && p.getWorld() == w)
+                        .filter(p -> p.getLocation().distanceSquared(z.getLocation()) <= (followRange * followRange))
+                        .min(Comparator.comparingDouble(p -> p.getLocation().distanceSquared(z.getLocation())))
+                        .orElse(null);
+
+                if (nearest != null) {
+                    z.setTarget(nearest);
+                }
+            }
+        }
+    }
+
+    private void spawnZombieClean(Location loc, double hp, double dmg, double follow,
+                                  Attribute maxHealth, Attribute attackDmg, Attribute followRangeAttr) {
         World w = loc.getWorld();
         if (w == null) return;
 
@@ -101,7 +140,7 @@ public class ZombieWaveManager {
                 // помечаем "наш"
                 z.getPersistentDataContainer().set(zombieKey, PersistentDataType.BYTE, (byte) 1);
 
-                // "обычный" зомби: без предметов и брони
+                // обычный зомби: без предметов/брони
                 z.setCanPickupItems(false);
                 EntityEquipment eq = z.getEquipment();
                 if (eq != null) {
@@ -133,6 +172,12 @@ public class ZombieWaveManager {
                 if (attackDmg != null) {
                     AttributeInstance a = z.getAttribute(attackDmg);
                     if (a != null) a.setBaseValue(dmg);
+                }
+
+                // дальность агра
+                if (followRangeAttr != null) {
+                    AttributeInstance a = z.getAttribute(followRangeAttr);
+                    if (a != null) a.setBaseValue(follow);
                 }
             });
 

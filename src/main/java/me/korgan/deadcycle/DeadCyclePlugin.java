@@ -90,6 +90,7 @@ public final class DeadCyclePlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(kit, this);
         Bukkit.getPluginManager().registerEvents(kitMenu, this);
         Bukkit.getPluginManager().registerEvents(shopGui, this);
+        Bukkit.getPluginManager().registerEvents(new BaseScrollListener(this), this);
 
         Bukkit.getPluginManager().registerEvents(new MobSpawnController(this), this);
         Bukkit.getPluginManager().registerEvents(new GameRulesController(this), this);
@@ -134,7 +135,7 @@ public final class DeadCyclePlugin extends JavaPlugin {
         // Если вдруг захочешь вернуть — просто раскомментируй:
         // actionBar.start();
 
-        getLogger().info("DeadCycle v0.6.1 enabled.");
+        getLogger().info("DeadCycle v0.6.4 enabled.");
     }
 
     @Override

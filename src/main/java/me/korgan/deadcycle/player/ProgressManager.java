@@ -31,11 +31,9 @@ public class ProgressManager {
 
     public int needPlayerExp(UUID uuid) {
         int lvl = getPlayerLevel(uuid);
-        // простая формула
         return 100 + (lvl - 1) * 80;
     }
 
-    // пока просто база — будем накидывать опыт в будущем (за волны/победы и т.д.)
     public void addPlayerExp(Player p, int amount) {
         UUID uuid = p.getUniqueId();
         int lvl = getPlayerLevel(uuid);
@@ -56,7 +54,7 @@ public class ProgressManager {
     }
 
     // ======================
-    //  УРОВЕНЬ КИТА MINER
+    //  MINER
     // ======================
     public int getMinerLevel(UUID uuid) {
         return store.getInt(uuid, "miner.level", 1);
@@ -101,13 +99,76 @@ public class ProgressManager {
     }
 
     // ======================
-    //  УНИВЕРСАЛЬНЫЙ ЛВЛ КИТА
-    // (пока реальный лвл есть только у MINER; остальным вернём 1)
+    //  FIGHTER (XP за убийства)
+    // ======================
+    public int getFighterLevel(UUID uuid) {
+        return store.getInt(uuid, "fighter.level", 1);
+    }
+
+    public int getFighterExp(UUID uuid) {
+        return store.getInt(uuid, "fighter.exp", 0);
+    }
+
+    public int needFighterExp(UUID uuid) {
+        int lvl = getFighterLevel(uuid);
+        int base = plugin.getConfig().getInt("kit_xp.fighter.level_xp_base", 120);
+        int add  = plugin.getConfig().getInt("kit_xp.fighter.level_xp_add_per_level", 60);
+        return base + (lvl - 1) * add;
+    }
+
+    public void addFighterExp(Player p, int amount) {
+        if (!plugin.getConfig().getBoolean("kit_xp.fighter.enabled", true)) return;
+
+        UUID uuid = p.getUniqueId();
+        int maxLevel = plugin.getConfig().getInt("kit_xp.fighter.max_level", 10);
+
+        int lvl = getFighterLevel(uuid);
+        int exp = getFighterExp(uuid);
+
+        if (lvl >= maxLevel) return;
+
+        exp += Math.max(1, amount);
+
+        while (lvl < maxLevel) {
+            int need = needFighterExp(uuid);
+            if (exp < need) break;
+            exp -= need;
+            lvl++;
+            store.setInt(uuid, "fighter.level", lvl);
+        }
+
+        store.setInt(uuid, "fighter.exp", exp);
+        store.save();
+    }
+
+    // ======================
+    //  УНИВЕРСАЛЬНЫЙ ЛВЛ/XP КИТА (для scoreboard)
     // ======================
     public int getKitLevel(UUID uuid, KitManager.Kit kit) {
         if (kit == null) return 0;
-        if (kit == KitManager.Kit.MINER) return getMinerLevel(uuid);
-        return 1;
+        return switch (kit) {
+            case MINER -> getMinerLevel(uuid);
+            case FIGHTER -> getFighterLevel(uuid);
+            case ARCHER, BUILDER -> 1; // пока без прокачки
+        };
+    }
+
+    public int getKitExp(UUID uuid, KitManager.Kit kit) {
+        if (kit == null) return 0;
+        return switch (kit) {
+            case MINER -> getMinerExp(uuid);
+            case FIGHTER -> getFighterExp(uuid);
+            case ARCHER, BUILDER -> 0;
+        };
+    }
+
+    public int getKitNeedExp(UUID uuid, KitManager.Kit kit) {
+        if (kit == null) return 0;
+        return switch (kit) {
+            case MINER -> needMinerExp(uuid);
+            case FIGHTER -> needFighterExp(uuid);
+            case ARCHER, BUILDER -> 0;
+        };
     }
 
     // ======================
@@ -117,28 +178,14 @@ public class ProgressManager {
         KitManager.Kit kit = plugin.kit().getKit(p.getUniqueId());
         if (kit == null) return;
 
-        // Майнер: Haste от уровня
         if (kit == KitManager.Kit.MINER) {
             int lvl = getMinerLevel(p.getUniqueId());
 
-            // каждые 2 уровня +1 Haste: 1-2=Haste I, 3-4=Haste II, ...
+            // каждые 2 уровня +1 Haste: 1-2=I, 3-4=II, ...
             int cap = plugin.getConfig().getInt("miner_progress.haste_max_level", 4);
             int amp = Math.min(cap, Math.max(0, (lvl - 1) / 2));
 
             p.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 20 * 70, amp, true, false, true));
         }
     }
-    public int getKitExp(UUID uuid, KitManager.Kit kit) {
-        if (kit == null) return 0;
-        if (kit == KitManager.Kit.MINER) return getMinerExp(uuid);
-        return 0;
-    }
-
-    public int getKitNeedExp(UUID uuid, KitManager.Kit kit) {
-        if (kit == null) return 0;
-        if (kit == KitManager.Kit.MINER) return needMinerExp(uuid);
-        return 0;
-    }
-
 }
-
