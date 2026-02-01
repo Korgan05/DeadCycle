@@ -1,55 +1,46 @@
-# ==============================
-# DeadCycle v0.6 — FULL CONFIG
-# ==============================
+# ======================
+# DeadCycle v0.6.2
+# ======================
 
-# ------------------------------
-# Фазы дня / ночи
-# ------------------------------
 phase:
-  day_seconds: 600        # 10 минут
-  night_seconds: 300      # 5 минут
+  day_seconds: 600
+  night_seconds: 300
 
-# ------------------------------
-# Экономика
-# ------------------------------
+# ======================
+# ECONOMY
+# ======================
 economy:
   start_money: 0
-  kill_zombie_reward: 5   # награда за убийство зомби (мелочь, не основной доход)
+  kill_zombie_reward: 5
 
-# ------------------------------
-# Сложность зомби (растёт по дням)
-# ------------------------------
+# ======================
+# DIFFICULTY
+# ======================
 difficulty:
-  zombie_hp_base: 14.0
-  zombie_hp_per_day: 1.0
+  zombie_hp_base: 16.0
+  zombie_hp_per_day: 1.2
   zombie_dmg_base: 2.0
-  zombie_dmg_per_day: 0.15
+  zombie_dmg_per_day: 0.2
 
-# ------------------------------
-# Волны зомби
-# ------------------------------
+# ======================
+# ZOMBIES
+# ======================
 zombies:
   enabled: true
-
-  # сколько зомби на игрока в начале
-  base_per_player: 1
-
-  # добавка каждые 2 дня
+  base_per_player: 2
   per_night_add: 1
 
-  # если игроки на базе → спавн за радиусом
   base_spawn_ring:
     min_outside: 10
-    max_outside: 30
+    max_outside: 28
 
-  # если не на базе → вокруг игроков
   spawn_radius_min: 12
   spawn_radius_max: 28
   spawn_y_offset: 2
 
-# ------------------------------
-# База
-# ------------------------------
+# ======================
+# BASE
+# ======================
 base:
   enabled: false
   world: world
@@ -59,35 +50,52 @@ base:
   radius: 30
   spawn_y_offset: 1
 
-# ------------------------------
-# Магазин (ТОЛЬКО ПОКУПКА)
-# ------------------------------
+# ======================
+# BASE RESOURCES
+# ======================
+base_resources:
+  money_per_point: 0.5
+  points: 0
+  by_type:
+    stone: 0
+    coal: 0
+    iron: 0
+    diamond: 0
+
+# ======================
+# BASE UPGRADES
+# ======================
+base_upgrades:
+  radius:
+    max: 60
+    price_per_level: 500
+  regen_speed:
+    max: 5
+    price_per_level: 350
+  wall_hp:
+    max: 5
+    price_per_level: 400
+
+# ======================
+# SHOP
+# ======================
 shop:
+  sell:
+    COBBLESTONE: 1
+    COAL: 4
+    IRON_INGOT: 10
+    GOLD_INGOT: 18
+    DIAMOND: 60
+
   buy:
-    # оружие
-    STONE_SWORD: 35
-    IRON_SWORD: 160
-    DIAMOND_SWORD: 650
-    STONE_AXE: 45
-    SHIELD: 120
-
-    # броня железо
+    # оружие / броня
+    IRON_SWORD: 120
+    IRON_CHESTPLATE: 250
+    IRON_LEGGINGS: 220
     IRON_HELMET: 160
-    IRON_CHESTPLATE: 320
-    IRON_LEGGINGS: 280
-    IRON_BOOTS: 150
-
-    # броня алмаз
-    DIAMOND_HELMET: 520
-    DIAMOND_CHESTPLATE: 900
-    DIAMOND_LEGGINGS: 800
-    DIAMOND_BOOTS: 480
-
-    # дальний бой
-    BOW: 220
-    ARROW: 3
-    SPECTRAL_ARROW: 8
-    FISHING_ROD: 80
+    IRON_BOOTS: 140
+    SHIELD: 80
+    BOW: 150
 
     # еда
     BREAD: 6
@@ -95,21 +103,28 @@ shop:
     COOKED_BEEF: 14
     GOLDEN_APPLE: 250
 
-    # полезное
-    TORCH: 2
-    OAK_PLANKS: 2
-    COBBLESTONE: 1
-    CHEST: 40
-    CRAFTING_TABLE: 15
+    # стрелы
+    ARROW: 2
+    ARROW_16: 40
+    ARROW_64: 150
 
-# ------------------------------
-# Осада базы (ломание стен)
-# ------------------------------
+    # наборы еды
+    FOOD_16_BREAD: 80
+    FOOD_16_BEEF: 180
+
+    # зелья
+    POTION_HEALING: 180
+    POTION_SWIFTNESS: 160
+    POTION_STRENGTH: 220
+    POTION_REGEN: 260
+
+# ======================
+# SIEGE (ОСАДА)
+# ======================
 siege:
   enabled: true
   only_at_night: true
   start_day: 3
-
   extra_radius: 8
   tick_interval: 10
 
@@ -119,9 +134,7 @@ siege:
   break_no_drops: true
   whitelist_only: true
 
-# ------------------------------
-# HP блоков базы
-# ------------------------------
+# HP блоков (осада)
 blocks_hp:
   OAK_PLANKS: 30
   SPRUCE_PLANKS: 30
@@ -139,30 +152,26 @@ blocks_hp:
   OAK_FENCE: 20
   OAK_DOOR: 18
 
-# ------------------------------
-# Builder (ремонт)
-# ------------------------------
+# ======================
+# BUILDER
+# ======================
 builder:
   repair_amount: 8
   repair_distance: 5
-  reward_money: 0
+  reward_money: 2
   reward_xp: 1
 
-# сколько очков базы тратится за 1 тик ремонта
-repair_cost:
-  points_per_tick: 10
-
-# ------------------------------
-# Реген шахты
-# ------------------------------
+# ======================
+# REGEN MINING
+# ======================
 regen_mining:
   enabled: true
   restore_seconds: 90
   only_outside_base: true
 
-# ------------------------------
-# Прокачка майнера
-# ------------------------------
+# ======================
+# MINER PROGRESS
+# ======================
 miner_progress:
   enabled: true
   exp_per_block: 2
@@ -170,41 +179,3 @@ miner_progress:
   level_xp_add_per_level: 40
   max_level: 10
   haste_max_level: 4
-
-# ------------------------------
-# Ресурсы базы (общие)
-# ------------------------------
-base_resources:
-  money_per_point: 0.5
-
-  points: 0
-
-  by_type:
-    stone: 0
-    coal: 0
-    iron: 0
-    diamond: 0
-
-# ------------------------------
-# Апгрейды базы
-# ------------------------------
-upgrades:
-  wall:
-    level: 0
-    max_level: 5
-    hp_per_level: 0.2
-    cost_base: 500
-    cost_add: 300
-
-  repair:
-    level: 0
-    max_level: 5
-    speed_per_level: 0.25
-    cost_base: 400
-    cost_add: 250
-
-# ------------------------------
-# GUI
-# ------------------------------
-base_menu:
-  enabled: true

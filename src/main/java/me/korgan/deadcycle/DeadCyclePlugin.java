@@ -2,22 +2,23 @@ package me.korgan.deadcycle;
 
 import me.korgan.deadcycle.base.*;
 import me.korgan.deadcycle.econ.EconomyManager;
+import me.korgan.deadcycle.econ.MoneyCommand;
 import me.korgan.deadcycle.kit.*;
 import me.korgan.deadcycle.mobs.MobSpawnController;
 import me.korgan.deadcycle.phase.PhaseManager;
 import me.korgan.deadcycle.player.*;
 import me.korgan.deadcycle.regen.RegenMiningListener;
+import me.korgan.deadcycle.scoreboard.BaseScoreboard;
 import me.korgan.deadcycle.shop.*;
 import me.korgan.deadcycle.siege.*;
 import me.korgan.deadcycle.system.*;
 import me.korgan.deadcycle.zombies.ZombieWaveManager;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
-import me.korgan.deadcycle.econ.MoneyCommand;
 
 public final class DeadCyclePlugin extends JavaPlugin {
 
-    // ===== base =====
+    // ===== core =====
     private BaseManager base;
     private BaseResourceManager baseResources;
     private BaseUpgradeManager upgrades;
@@ -39,10 +40,13 @@ public final class DeadCyclePlugin extends JavaPlugin {
     private ZombieWaveManager zombie;
     private PhaseManager phase;
 
-    // ===== GUI =====
+    // ===== GUI (важно для BaseGUI) =====
     private RepairGUI repairGui;
     private BaseGUI baseGui;
     private BaseUpgradeGUI baseUpgradeGui;
+
+    // ===== scoreboard =====
+    private BaseScoreboard scoreboard;
 
     @Override
     public void onEnable() {
@@ -70,10 +74,13 @@ public final class DeadCyclePlugin extends JavaPlugin {
         zombie = new ZombieWaveManager(this);
         phase = new PhaseManager(this, siege);
 
-        // ===== GUI instances (ВАЖНО: именно так, без лишних аргументов) =====
+        // ===== GUI =====
         repairGui = new RepairGUI(this, blockHealth);
         baseGui = new BaseGUI(this);
         baseUpgradeGui = new BaseUpgradeGUI(this);
+
+        // ===== scoreboard =====
+        scoreboard = new BaseScoreboard(this);
 
         // ===== Events =====
         Bukkit.getPluginManager().registerEvents(new ResourceDepositListener(this), this);
@@ -95,26 +102,39 @@ public final class DeadCyclePlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(baseUpgradeGui, this);
 
         // ===== Commands =====
+
+        // /dc ...
+        if (getCommand("dc") != null)
+            getCommand("dc").setExecutor(new DcCommand(this));
+
+        // /repair -> opens GUI
         if (getCommand("repair") != null)
             getCommand("repair").setExecutor(new RepairCommand(this, repairGui));
 
+        // /shop
         if (getCommand("shop") != null)
             getCommand("shop").setExecutor(new ShopCommand(this));
 
+        // /kit
         if (getCommand("kit") != null)
             getCommand("kit").setExecutor(new KitCommand(this));
 
+        // /money
         if (getCommand("money") != null)
             getCommand("money").setExecutor(new MoneyCommand(this));
 
-        // ✅ /base
+        // /base
         if (getCommand("base") != null)
             getCommand("base").setExecutor(new BaseCommand(this));
 
         // ===== Timers =====
-        actionBar.start();
+        Bukkit.getScheduler().runTaskTimer(this, scoreboard::updateAll, 20L, 40L);
 
-        getLogger().info("DeadCycle v0.6 enabled.");
+        // Нижний HUD ты говорил не нужен — выключаем.
+        // Если вдруг захочешь вернуть — просто раскомментируй:
+        // actionBar.start();
+
+        getLogger().info("DeadCycle v0.6.1 enabled.");
     }
 
     @Override
@@ -122,7 +142,6 @@ public final class DeadCyclePlugin extends JavaPlugin {
         try {
             if (econ != null) econ.save();
             if (baseResources != null) baseResources.save();
-            if (upgrades != null) upgrades.save();
         } catch (Throwable ignored) {}
     }
 
@@ -147,8 +166,11 @@ public final class DeadCyclePlugin extends JavaPlugin {
 
     public ShopGUI shopGui() { return shopGui; }
 
-    // ✅ GUI getters
+    // GUI getters
     public RepairGUI repairGui() { return repairGui; }
     public BaseGUI baseGui() { return baseGui; }
     public BaseUpgradeGUI baseUpgradeGui() { return baseUpgradeGui; }
+
+    // scoreboard getter если понадобится
+    public BaseScoreboard scoreboard() { return scoreboard; }
 }
