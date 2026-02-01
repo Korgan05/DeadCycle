@@ -7,35 +7,42 @@ import me.korgan.deadcycle.mobs.MobSpawnController;
 import me.korgan.deadcycle.phase.PhaseManager;
 import me.korgan.deadcycle.player.*;
 import me.korgan.deadcycle.regen.RegenMiningListener;
-import me.korgan.deadcycle.scoreboard.BaseScoreboard;
 import me.korgan.deadcycle.shop.*;
 import me.korgan.deadcycle.siege.*;
 import me.korgan.deadcycle.system.*;
 import me.korgan.deadcycle.zombies.ZombieWaveManager;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+import me.korgan.deadcycle.econ.MoneyCommand;
 
 public final class DeadCyclePlugin extends JavaPlugin {
 
+    // ===== base =====
     private BaseManager base;
     private BaseResourceManager baseResources;
     private BaseUpgradeManager upgrades;
 
+    // ===== player =====
     private PlayerDataStore playerStore;
     private ProgressManager progress;
     private ActionBarHUD actionBar;
 
+    // ===== economy / kits / shop =====
     private EconomyManager econ;
     private KitManager kit;
     private KitMenu kitMenu;
     private ShopGUI shopGui;
 
+    // ===== siege / mobs / phase =====
     private BlockHealthManager blockHealth;
     private SiegeManager siege;
     private ZombieWaveManager zombie;
     private PhaseManager phase;
 
-    private BaseScoreboard scoreboard;
+    // ===== GUI =====
+    private RepairGUI repairGui;
+    private BaseGUI baseGui;
+    private BaseUpgradeGUI baseUpgradeGui;
 
     @Override
     public void onEnable() {
@@ -63,7 +70,10 @@ public final class DeadCyclePlugin extends JavaPlugin {
         zombie = new ZombieWaveManager(this);
         phase = new PhaseManager(this, siege);
 
-        scoreboard = new BaseScoreboard(this);
+        // ===== GUI instances (ВАЖНО: именно так, без лишних аргументов) =====
+        repairGui = new RepairGUI(this, blockHealth);
+        baseGui = new BaseGUI(this);
+        baseUpgradeGui = new BaseUpgradeGUI(this);
 
         // ===== Events =====
         Bukkit.getPluginManager().registerEvents(new ResourceDepositListener(this), this);
@@ -79,13 +89,14 @@ public final class DeadCyclePlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new PlayerRulesListener(this), this);
         Bukkit.getPluginManager().registerEvents(new RegenMiningListener(this), this);
 
-        // repair gui
-        RepairGUI repairGUI = new RepairGUI(this, blockHealth);
-        Bukkit.getPluginManager().registerEvents(repairGUI, this);
+        // GUI listeners
+        Bukkit.getPluginManager().registerEvents(repairGui, this);
+        Bukkit.getPluginManager().registerEvents(baseGui, this);
+        Bukkit.getPluginManager().registerEvents(baseUpgradeGui, this);
 
         // ===== Commands =====
         if (getCommand("repair") != null)
-            getCommand("repair").setExecutor(new RepairCommand(this, repairGUI));
+            getCommand("repair").setExecutor(new RepairCommand(this, repairGui));
 
         if (getCommand("shop") != null)
             getCommand("shop").setExecutor(new ShopCommand(this));
@@ -96,8 +107,11 @@ public final class DeadCyclePlugin extends JavaPlugin {
         if (getCommand("money") != null)
             getCommand("money").setExecutor(new MoneyCommand(this));
 
+        // ✅ /base
+        if (getCommand("base") != null)
+            getCommand("base").setExecutor(new BaseCommand(this));
+
         // ===== Timers =====
-        Bukkit.getScheduler().runTaskTimer(this, scoreboard::updateAll, 20L, 40L);
         actionBar.start();
 
         getLogger().info("DeadCycle v0.6 enabled.");
@@ -108,6 +122,7 @@ public final class DeadCyclePlugin extends JavaPlugin {
         try {
             if (econ != null) econ.save();
             if (baseResources != null) baseResources.save();
+            if (upgrades != null) upgrades.save();
         } catch (Throwable ignored) {}
     }
 
@@ -131,4 +146,9 @@ public final class DeadCyclePlugin extends JavaPlugin {
     public BlockHealthManager blocks() { return blockHealth; }
 
     public ShopGUI shopGui() { return shopGui; }
+
+    // ✅ GUI getters
+    public RepairGUI repairGui() { return repairGui; }
+    public BaseGUI baseGui() { return baseGui; }
+    public BaseUpgradeGUI baseUpgradeGui() { return baseUpgradeGui; }
 }
