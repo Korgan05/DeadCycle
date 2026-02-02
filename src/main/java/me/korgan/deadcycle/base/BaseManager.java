@@ -29,7 +29,6 @@ public class BaseManager {
         String worldName = cfg.getString("base.world", "world");
         world = Bukkit.getWorld(worldName);
         if (world == null) {
-            // если мир ещё не прогрузился при старте — попробуем позже, но центр пока null
             center = null;
             radius = cfg.getInt("base.radius", 30);
             return;
@@ -55,6 +54,11 @@ public class BaseManager {
         return radius;
     }
 
+    // ✅ нужно для BlockHealthManager
+    public String getWorldName() {
+        return (world != null) ? world.getName() : plugin.getConfig().getString("base.world", "world");
+    }
+
     public void setBase(Location loc, int radius) {
         if (loc == null || loc.getWorld() == null) return;
 
@@ -66,7 +70,6 @@ public class BaseManager {
         this.radius = Math.max(5, radius);
         this.enabled = true;
 
-        // сохраняем в конфиг
         plugin.getConfig().set("base.enabled", true);
         plugin.getConfig().set("base.world", world.getName());
         plugin.getConfig().set("base.x", center.getBlockX());

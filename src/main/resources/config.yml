@@ -6,6 +6,14 @@ economy:
   start_money: 0
   kill_zombie_reward: 5
 
+# --- death rules ---
+death:
+  # сохранять инвентарь при смерти
+  keep_inventory: true
+
+  # но ресурсы (камень/уголь/железо/золото/алмазы) удалять при смерти
+  remove_resources: true
+
 difficulty:
   zombie_hp_base: 16.0
   zombie_hp_per_day: 1.2
@@ -17,22 +25,25 @@ zombies:
   base_per_player: 2
   per_night_add: 1
 
-  # если база активна и кто-то на базе — спавн вокруг базы, НО ЗА радиусом базы
+  # ✅ когда наступает день — удаляем зомби
+  despawn_at_day: true
+
+  # true = удалить всех зомби в мире базы; false = удалить только "наших" (deadcycle_zombie)
+  despawn_all_at_day: true
+
   base_spawn_ring:
     min_outside: 10
     max_outside: 28
 
-  # если на базе никого — вокруг игроков
   spawn_radius_min: 12
   spawn_radius_max: 28
   spawn_y_offset: 2
 
-  # агр дальше + "видеть через стены" (если у тебя это реализовано в ZombieWaveManager)
   follow_range: 48.0
   target_scan_seconds: 2
 
 base:
-  enabled: false
+  enabled: true
   world: world
   x: 0
   y: 64
@@ -40,54 +51,76 @@ base:
   radius: 30
   spawn_y_offset: 1
 
-shop:
-  # ПРОДАЖА (если у тебя продажа отключена — можно оставить цены, но игроки не смогут продавать)
-  sell:
-    COBBLESTONE: 1
-    COAL: 4
-    IRON_INGOT: 10
-    GOLD_INGOT: 18
-    DIAMOND: 60
+  # ✅ текущий уровень стен базы (1..wall_upgrade.max_level)
+  wall_level: 1
 
-  # ПОКУПКА (цены подобраны “не бесплатно”, но не слишком жёстко)
+shop:
   buy:
+    # Подсказка: ЛКМ — купить, Shift+ЛКМ — купить x4
+
+    # --- бой ---
+    STONE_SWORD: 25
     IRON_SWORD: 120
     SHIELD: 80
     BOW: 150
+    ARROW_16: 25
 
-    # ВАЖНО: в моём ShopGUI покупка стрел выдаёт x16, а еда выдаёт x8.
-    # Поэтому цена тут за "пакет", а не за 1 штуку:
-    ARROW: 25
-    COOKED_BEEF: 30
+    # --- броня ---
+    LEATHER_HELMET: 25
+    LEATHER_CHESTPLATE: 45
+    LEATHER_LEGGINGS: 40
+    LEATHER_BOOTS: 25
 
+    IRON_HELMET: 160
+    IRON_CHESTPLATE: 250
+    IRON_LEGGINGS: 220
+    IRON_BOOTS: 140
+
+    # --- инструменты ---
+    IRON_PICKAXE: 180
+    IRON_AXE: 140
+    IRON_SHOVEL: 60
+    SHEARS: 45
+    TORCH_16: 20
+
+    # --- блоки ---
+    COBBLESTONE_64: 30
+    OAK_PLANKS_64: 35
+    SPRUCE_PLANKS_64: 35
+    STONE_BRICKS_64: 55
+    GLASS_16: 25
+
+    # --- еда ---
+    BREAD_16: 22
+    COOKED_BEEF_16: 35
     GOLDEN_APPLE: 180
 
-    # ВАЖНО: в коде я читаю shop.buy.POTION_HEALING, а не POTION
+    # --- особое ---
     POTION_HEALING: 220
+    ENDER_PEARL_4: 120
+    BASE_SCROLL: 800
 
-    # Свиток телепорта на базу (PAPER, одноразовый)
-    BASE_SCROLL: 1000
+  sell:
+    # Подсказка: ЛКМ — продать 1, Shift+ЛКМ — продать всё
+    COBBLESTONE: 1
+    COAL: 4
+    IRON_INGOT: 10
+    GOLD_INGOT: 14
+    DIAMOND: 30
 
 # ---- осада ----
 siege:
   enabled: true
   only_at_night: true
   start_day: 3
-
-  # зона осады вокруг базы = base.radius + extra_radius
   extra_radius: 8
-
-  # как часто проверять (в тиках). 10 тиков = 0.5 сек
   tick_interval: 10
-
   block_damage_base: 2
   block_damage_per_day: 0.3
-
   break_no_drops: true
-
-  # какие блоки зомби могут ломать (если true — только из списка ниже)
   whitelist_only: true
 
+# Сколько HP у блоков базы (то, что не указано — не ломается зомби)
 blocks_hp:
   OAK_PLANKS: 30
   SPRUCE_PLANKS: 30
@@ -99,24 +132,22 @@ blocks_hp:
   CHERRY_PLANKS: 30
 
   COBBLESTONE: 60
+  STONE: 60
   STONE_BRICKS: 80
   BRICKS: 70
 
   OAK_FENCE: 20
   OAK_DOOR: 18
 
+# --- builder ---
 builder:
   repair_amount: 8
-  repair_distance: 5
-  reward_money: 2
-  reward_xp: 1
 
 repair_gui:
-  # как часто происходит "тик" ремонта (20 тиков = 1 сек)
+  inv_title: "Ремонт базы"
   tick_period_ticks: 20
 
 repair_cost:
-  # сколько очков базы тратится на 1 тик ремонта
   points_per_tick: 10
 
 # --- mining regen + miner leveling ---
@@ -135,20 +166,61 @@ miner_progress:
 
 kit_xp:
   fighter:
-    enabled: true
     exp_per_zombie: 2
     level_xp_base: 60
     level_xp_add_per_level: 35
     max_level: 10
 
+  builder:
+    exp_per_repair_tick: 1
+    exp_per_wall_block_upgrade: 1
+    level_xp_base: 70
+    level_xp_add_per_level: 45
+    max_level: 10
+
+# --- kit buffs (баланс кита) ---
+kit_buffs:
+  fighter:
+    enabled: true
+
+    # Health Boost: lvl2-4 -> I, lvl5-7 -> II, lvl8-10 -> III (по умолчанию)
+    health_boost_start_level: 2
+    health_boost_every_levels: 3
+    health_boost_max_level: 3
+
+    # Strength: lvl6+ -> I, lvl10 -> II (по умолчанию)
+    strength_level_1_start: 6
+    strength_level_2_start: 10
+
 # --- base resources ---
 base_resources:
   money_per_point: 0.5
-
   points: 0
-
   by_type:
     stone: 0
     coal: 0
     iron: 0
     diamond: 0
+
+# --- wall upgrade (builder) ---
+wall_upgrade:
+  enabled: true
+  max_level: 3
+
+  # ✅ материалы по уровням
+  levels:
+    l1: OAK_PLANKS
+    l2: SPRUCE_PLANKS
+    l3: COBBLESTONE
+
+  # ✅ скорость апгрейда
+  tick_period_ticks: 20
+  blocks_per_tick_base: 1
+  blocks_per_tick_per_builder_level: 1
+
+  # ✅ цена за 1 блок (в очках базы)
+  points_per_block: 15
+
+  # ✅ скан по Y относительно центра базы (чтобы не апгрейдить всё подряд по миру)
+  scan_y_min_offset: -5
+  scan_y_max_offset: 15

@@ -32,30 +32,21 @@ public class BaseScoreboard {
 
         int line = 15;
 
-        // На базе: X
         int onBase = plugin.base().isEnabled() ? plugin.base().countOnBase() : 0;
         o.getScore(ChatColor.YELLOW + "На базе: " + ChatColor.WHITE + onBase).setScore(line--);
 
-        // День / Фаза
         o.getScore(ChatColor.YELLOW + "День: " + ChatColor.WHITE + plugin.phase().getDayCount()).setScore(line--);
         o.getScore(ChatColor.YELLOW + "Фаза: " + ChatColor.WHITE + plugin.phase().getPhase().name()).setScore(line--);
 
         o.getScore(" ").setScore(line--);
 
-        // Деньги
         long money = plugin.econ().getMoney(p.getUniqueId());
         o.getScore(ChatColor.GOLD + "Деньги: " + ChatColor.WHITE + money).setScore(line--);
 
-        // Кит
         KitManager.Kit kit = plugin.kit().getKit(p.getUniqueId());
         String kitName = (kit == null) ? "-" : kit.name();
         o.getScore(ChatColor.AQUA + "Кит: " + ChatColor.WHITE + kitName).setScore(line--);
 
-        // Уровень игрока (если хочешь показывать)
-        int plLvl = plugin.progress().getPlayerLevel(p.getUniqueId());
-        o.getScore(ChatColor.BLUE + "Уровень: " + ChatColor.WHITE + plLvl).setScore(line--);
-
-        // Прогресс кита (пока реальные уровни у майнера, но UI общий)
         int kitLvl = plugin.progress().getKitLevel(p.getUniqueId(), kit);
         int kitExp = plugin.progress().getKitExp(p.getUniqueId(), kit);
         int kitNeed = plugin.progress().getKitNeedExp(p.getUniqueId(), kit);

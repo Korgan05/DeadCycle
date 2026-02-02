@@ -20,7 +20,8 @@ public class BaseResourceManager {
 
     public BaseResourceManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
-        for (ResourceType t : ResourceType.values()) pointsByType.put(t, 0L);
+        for (ResourceType t : ResourceType.values())
+            pointsByType.put(t, 0L);
         load();
     }
 
@@ -48,20 +49,39 @@ public class BaseResourceManager {
         return basePoints;
     }
 
+    // === compatibility aliases (старые вызовы из GUI) ===
+    public long getPoints() {
+        return basePoints;
+    }
+
+    /**
+     * Добавить/списать очки базы. Используй отрицательное значение, чтобы списать.
+     * Для списания с проверкой лучше использовать spendPoints().
+     */
+    public void addPoints(long delta) {
+        if (delta == 0)
+            return;
+        basePoints = Math.max(0L, basePoints + delta);
+        save();
+    }
+
     public long getPoints(ResourceType type) {
         return pointsByType.getOrDefault(type, 0L);
     }
 
     public void addPoints(ResourceType type, long points) {
-        if (points <= 0) return;
+        if (points <= 0)
+            return;
         basePoints += points;
         pointsByType.put(type, getPoints(type) + points);
         save();
     }
 
     public boolean spendPoints(long points) {
-        if (points <= 0) return true;
-        if (basePoints < points) return false;
+        if (points <= 0)
+            return true;
+        if (basePoints < points)
+            return false;
         basePoints -= points;
         save();
         return true;
@@ -73,18 +93,26 @@ public class BaseResourceManager {
 
     public int pointsPer(Material m) {
         // веса как ты попросил
-        if (m == Material.COBBLESTONE) return 5;
-        if (m == Material.COAL) return 20;
-        if (m == Material.IRON_INGOT) return 50;
-        if (m == Material.DIAMOND) return 500;
+        if (m == Material.COBBLESTONE)
+            return 5;
+        if (m == Material.COAL)
+            return 20;
+        if (m == Material.IRON_INGOT)
+            return 50;
+        if (m == Material.DIAMOND)
+            return 500;
         return 0;
     }
 
     public ResourceType typeOf(Material m) {
-        if (m == Material.COBBLESTONE) return ResourceType.STONE;
-        if (m == Material.COAL) return ResourceType.COAL;
-        if (m == Material.IRON_INGOT) return ResourceType.IRON;
-        if (m == Material.DIAMOND) return ResourceType.DIAMOND;
+        if (m == Material.COBBLESTONE)
+            return ResourceType.STONE;
+        if (m == Material.COAL)
+            return ResourceType.COAL;
+        if (m == Material.IRON_INGOT)
+            return ResourceType.IRON;
+        if (m == Material.DIAMOND)
+            return ResourceType.DIAMOND;
         return null;
     }
 

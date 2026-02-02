@@ -15,6 +15,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.Arrays;
+import java.util.Locale;
 
 public class BaseGUI implements Listener {
 
@@ -80,6 +81,15 @@ public class BaseGUI implements Listener {
         KitManager.Kit kit = plugin.kit().getKit(p.getUniqueId());
         String kitName = (kit == null) ? "-" : kit.name();
 
+        int wallLevel = plugin.getConfig().getInt("base.wall_level", 1);
+        int maxWallLevel = plugin.getConfig().getInt("wall_upgrade.max_level", 3);
+        String wallNext = ChatColor.RED + "недоступно";
+        if (wallLevel < maxWallLevel) {
+            Material nextMat = getWallMaterialForLevel(wallLevel + 1);
+            wallNext = ChatColor.AQUA + String.valueOf(wallLevel + 1)
+                    + ChatColor.GRAY + " (" + ChatColor.WHITE + prettyMat(nextMat) + ChatColor.GRAY + ")";
+        }
+
         return button(Material.BOOK,
                 ChatColor.GREEN + "Статус базы",
                 ChatColor.YELLOW + "На базе: " + ChatColor.WHITE + onBase,
@@ -87,12 +97,33 @@ public class BaseGUI implements Listener {
                 ChatColor.GOLD + "Твои деньги: " + ChatColor.WHITE + money,
                 ChatColor.BLUE + "Твой кит: " + ChatColor.WHITE + kitName,
                 " ",
+                ChatColor.GREEN + "Стены: " + ChatColor.WHITE + wallLevel + ChatColor.GRAY + " / " + ChatColor.WHITE + maxWallLevel,
+                ChatColor.GRAY + "След. уровень: " + wallNext,
+                " ",
                 ChatColor.AQUA + "Очки базы: " + ChatColor.WHITE + total,
                 ChatColor.GRAY + "Камень: " + stone,
                 ChatColor.GRAY + "Уголь: " + coal,
                 ChatColor.GRAY + "Железо: " + iron,
                 ChatColor.GRAY + "Алмазы: " + dia
         );
+    }
+
+    private Material getWallMaterialForLevel(int level) {
+        String key = "wall_upgrade.levels.l" + level;
+        String raw = plugin.getConfig().getString(key);
+        Material mat = (raw == null) ? null : Material.matchMaterial(raw);
+        if (mat != null) return mat;
+
+        return switch (level) {
+            case 1 -> Material.OAK_PLANKS;
+            case 2 -> Material.SPRUCE_PLANKS;
+            case 3 -> Material.COBBLESTONE;
+            default -> Material.OAK_PLANKS;
+        };
+    }
+
+    private String prettyMat(Material m) {
+        return m.name().toLowerCase(Locale.ROOT);
     }
 
     @EventHandler

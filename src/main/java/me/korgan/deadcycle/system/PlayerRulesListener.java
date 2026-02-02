@@ -3,12 +3,16 @@ package me.korgan.deadcycle.system;
 import me.korgan.deadcycle.DeadCyclePlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.inventory.ItemStack;
+
+import java.util.Iterator;
 
 public class PlayerRulesListener implements Listener {
 
@@ -21,10 +25,55 @@ public class PlayerRulesListener implements Listener {
     // после смерти вещи НЕ выпадают
     @EventHandler
     public void onDeath(PlayerDeathEvent e) {
-        e.getDrops().clear();
+        // Поведение по умолчанию в этом режиме: инвентарь сохраняется.
+        // Но ресурсы должны пропадать при смерти (по просьбе).
+        boolean keepInv = plugin.getConfig().getBoolean("death.keep_inventory", true);
+        boolean removeRes = plugin.getConfig().getBoolean("death.remove_resources", true);
+
         e.setDroppedExp(0);
-        e.setKeepInventory(true); // на Paper работает, но мы все равно чистим drops
         e.setKeepLevel(true);
+
+        if (keepInv) {
+            e.setKeepInventory(true);
+            e.getDrops().clear();
+        }
+
+        if (!removeRes) return;
+
+        // 1) на всякий случай убираем из дропа (если keepInventory=false в будущем)
+        Iterator<ItemStack> it = e.getDrops().iterator();
+        while (it.hasNext()) {
+            ItemStack drop = it.next();
+            if (drop == null) continue;
+            if (isResource(drop.getType())) it.remove();
+        }
+
+        // 2) и главное: убираем из инвентаря игрока (при keepInventory=true)
+        Player p = e.getEntity();
+        for (int i = 0; i < p.getInventory().getSize(); i++) {
+            ItemStack item = p.getInventory().getItem(i);
+            if (item == null) continue;
+            if (isResource(item.getType())) {
+                p.getInventory().setItem(i, null);
+            }
+        }
+    }
+
+    private boolean isResource(Material m) {
+        if (m == null) return false;
+        // ресурсами считаем то, что используется/продаётся в режиме
+        if (m == Material.COBBLESTONE) return true;
+        if (m == Material.COAL) return true;
+        if (m == Material.IRON_INGOT) return true;
+        if (m == Material.GOLD_INGOT) return true;
+        if (m == Material.DIAMOND) return true;
+
+        // и всё, что конвертится в очки базы
+        try {
+            return plugin.baseResources() != null && plugin.baseResources().pointsPer(m) > 0;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     // респавн на базе (если база включена)

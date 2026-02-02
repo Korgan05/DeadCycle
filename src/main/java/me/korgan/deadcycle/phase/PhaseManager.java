@@ -3,7 +3,6 @@ package me.korgan.deadcycle.phase;
 import me.korgan.deadcycle.DeadCyclePlugin;
 import me.korgan.deadcycle.siege.SiegeManager;
 import org.bukkit.Bukkit;
-import org.bukkit.GameRule;
 import org.bukkit.World;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
@@ -19,6 +18,7 @@ public class PhaseManager {
 
     private Phase phase = Phase.DAY;
     private int dayCount = 0;
+
     private BukkitTask task;
     private final BossBar bar;
 
@@ -61,6 +61,7 @@ public class PhaseManager {
             }
         }, 20L, 20L);
 
+        // чтобы тем, кто зашёл позже, тоже показывало BossBar
         Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!bar.isVisible()) return;
             Bukkit.getOnlinePlayers().forEach(p -> {
@@ -84,14 +85,7 @@ public class PhaseManager {
     public void forcePhase(String phaseName) {
         if (phaseName == null) return;
         if (phaseName.equalsIgnoreCase("day")) switchToDay(false);
-        else if (phaseName.equalsIgnoreCase("night")) switchToNight();
-    }
-
-    private void applyWorldRulesAndTime(long time) {
-        for (World w : Bukkit.getWorlds()) {
-            w.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, false); // 🔥 важно
-            w.setTime(time);
-        }
+        if (phaseName.equalsIgnoreCase("night")) switchToNight();
     }
 
     private void switchToDay(boolean first) {
@@ -105,7 +99,7 @@ public class PhaseManager {
 
         secondsLeft = plugin.getConfig().getInt("phase.day_seconds", 600);
 
-        applyWorldRulesAndTime(1000);
+        for (World w : Bukkit.getWorlds()) w.setTime(1000);
         bar.setColor(BarColor.GREEN);
     }
 
@@ -114,11 +108,12 @@ public class PhaseManager {
 
         secondsLeft = plugin.getConfig().getInt("phase.night_seconds", 300);
 
-        applyWorldRulesAndTime(13000);
+        for (World w : Bukkit.getWorlds()) w.setTime(13000);
         bar.setColor(BarColor.PURPLE);
 
         plugin.zombie().startNight(dayCount);
 
+        // осада стартует, если условия соблюдены (start_day, кто-то на базе и т.д.)
         siege.onNightStart(dayCount);
     }
 }

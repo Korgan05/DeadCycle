@@ -27,6 +27,14 @@ public class PlayerDataStore {
         data.set(uuid + "." + path, val);
     }
 
+    public String getString(UUID uuid, String path, String def) {
+        return data.getString(uuid + "." + path, def);
+    }
+
+    public void setString(UUID uuid, String path, String val) {
+        data.set(uuid + "." + path, val);
+    }
+
     public void save() {
         try {
             data.save(file);

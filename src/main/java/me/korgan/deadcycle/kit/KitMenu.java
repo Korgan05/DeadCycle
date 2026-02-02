@@ -1,10 +1,10 @@
 package me.korgan.deadcycle.kit;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
-import me.korgan.deadcycle.kit.KitManager.Kit;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -13,53 +13,93 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import java.util.Arrays;
+
 public class KitMenu implements Listener {
 
     private final DeadCyclePlugin plugin;
-    private final String title = ChatColor.DARK_GREEN + "DeadCycle: Выбор кита";
 
     public KitMenu(DeadCyclePlugin plugin) {
         this.plugin = plugin;
     }
 
     public void open(Player p) {
-        Inventory inv = Bukkit.createInventory(null, 9, title);
+        Inventory inv = Bukkit.createInventory(null, 27, ChatColor.DARK_GREEN + "Выбор кита");
 
-        inv.setItem(1, item(Material.STONE_PICKAXE, ChatColor.GREEN + "Шахтёр"));
-        inv.setItem(3, item(Material.STONE_SWORD, ChatColor.RED + "Боец"));
-        inv.setItem(5, item(Material.BOW, ChatColor.YELLOW + "Лучник"));
-        inv.setItem(7, item(Material.OAK_PLANKS, ChatColor.AQUA + "Строитель"));
+        inv.setItem(11, item(Material.IRON_SWORD,
+                ChatColor.RED + "Боец",
+                ChatColor.GRAY + "Стартовый кит бойца"));
+
+        inv.setItem(13, item(Material.IRON_PICKAXE,
+                ChatColor.GOLD + "Шахтёр",
+                ChatColor.GRAY + "Добыча ресурсов и опыт"));
+
+        inv.setItem(15, item(Material.ANVIL,
+                ChatColor.GREEN + "Билдер",
+                ChatColor.GRAY + "Ремонт базы + улучшение стен"));
+
+        inv.setItem(22, item(Material.BOW,
+                ChatColor.AQUA + "Лучник",
+                ChatColor.GRAY + "Дальний бой"));
 
         p.openInventory(inv);
+    }
+
+    private ItemStack item(Material mat, String name, String... lore) {
+        ItemStack it = new ItemStack(mat);
+        ItemMeta im = it.getItemMeta();
+        if (im != null) {
+            im.setDisplayName(name);
+            if (lore != null && lore.length > 0) im.setLore(Arrays.asList(lore));
+            it.setItemMeta(im);
+        }
+        return it;
     }
 
     @EventHandler
     public void onClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
-        if (!title.equals(e.getView().getTitle())) return;
+        if (e.getView().getTitle() == null) return;
+
+        String title = ChatColor.stripColor(e.getView().getTitle());
+        if (!"Выбор кита".equalsIgnoreCase(title)) return;
 
         e.setCancelled(true);
-        ItemStack it = e.getCurrentItem();
-        if (it == null || it.getType() == Material.AIR) return;
 
-        Material m = it.getType();
+        if (e.getCurrentItem() == null) return;
 
-        if (m == Material.STONE_PICKAXE) plugin.kit().setKit(p, Kit.MINER);
-        else if (m == Material.STONE_SWORD) plugin.kit().setKit(p, Kit.FIGHTER);
-        else if (m == Material.BOW) plugin.kit().setKit(p, Kit.ARCHER);
-        else if (m == Material.OAK_PLANKS) plugin.kit().setKit(p, Kit.BUILDER);
-        else return;
+        int slot = e.getRawSlot();
 
-        p.closeInventory();
-    }
-
-    private ItemStack item(Material mat, String name) {
-        ItemStack it = new ItemStack(mat);
-        ItemMeta meta = it.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            it.setItemMeta(meta);
+        // ✅ ВАЖНО: выдаём кит предметами, а не просто setKit()
+        if (slot == 11) {
+            plugin.kit().giveKit(p, KitManager.Kit.FIGHTER);
+            p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.RED + "Боец");
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
+            p.closeInventory();
+            return;
         }
-        return it;
+
+        if (slot == 13) {
+            plugin.kit().giveKit(p, KitManager.Kit.MINER);
+            p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.GOLD + "Шахтёр");
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
+            p.closeInventory();
+            return;
+        }
+
+        if (slot == 15) {
+            plugin.kit().giveKit(p, KitManager.Kit.BUILDER);
+            p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.GREEN + "Билдер");
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
+            p.closeInventory();
+            return;
+        }
+
+        if (slot == 22) {
+            plugin.kit().giveKit(p, KitManager.Kit.ARCHER);
+            p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.AQUA + "Лучник");
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
+            p.closeInventory();
+        }
     }
 }

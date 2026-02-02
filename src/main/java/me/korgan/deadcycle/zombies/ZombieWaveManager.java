@@ -103,6 +103,43 @@ public class ZombieWaveManager {
             targetTask.cancel();
             targetTask = null;
         }
+
+        // По запросу: когда наступает день — зомби должны исчезать.
+        // По умолчанию чистим всех зомби в мире базы (минимум побочных эффектов).
+        despawnZombiesAtDay();
+    }
+
+    private void despawnZombiesAtDay() {
+        boolean enabled = plugin.getConfig().getBoolean("zombies.despawn_at_day", true);
+        if (!enabled) return;
+
+        // true = убрать всех зомби; false = убрать только помеченных deadcycle_zombie
+        boolean all = plugin.getConfig().getBoolean("zombies.despawn_all_at_day", true);
+
+        World baseWorld = null;
+        if (plugin.base() != null) {
+            String wn = plugin.base().getWorldName();
+            if (wn != null && !wn.isBlank()) {
+                baseWorld = Bukkit.getWorld(wn);
+            }
+        }
+
+        // Если мир базы не определён — чистим во всех мирах.
+        Iterable<World> worlds = (baseWorld != null) ? java.util.List.of(baseWorld) : Bukkit.getWorlds();
+
+        for (World w : worlds) {
+            for (Entity ent : w.getEntities()) {
+                if (!(ent instanceof Zombie z)) continue;
+                if (z.isDead()) continue;
+
+                if (!all) {
+                    Byte mark = z.getPersistentDataContainer().get(zombieKey, PersistentDataType.BYTE);
+                    if (mark == null || mark != (byte) 1) continue;
+                }
+
+                z.remove();
+            }
+        }
     }
 
     private void forceTargets(double followRange) {

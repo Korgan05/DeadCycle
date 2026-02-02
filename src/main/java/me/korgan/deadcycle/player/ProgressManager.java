@@ -2,6 +2,11 @@ package me.korgan.deadcycle.player;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
 import me.korgan.deadcycle.kit.KitManager;
+import org.bukkit.ChatColor;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -18,44 +23,31 @@ public class ProgressManager {
         this.store = store;
     }
 
-    // ======================
-    //  ОБЩИЙ УРОВЕНЬ ИГРОКА
-    // ======================
-    public int getPlayerLevel(UUID uuid) {
-        return store.getInt(uuid, "player.level", 1);
-    }
+    // =========================
+    // KIT selection persistence
+    // =========================
 
-    public int getPlayerExp(UUID uuid) {
-        return store.getInt(uuid, "player.exp", 0);
-    }
-
-    public int needPlayerExp(UUID uuid) {
-        int lvl = getPlayerLevel(uuid);
-        return 100 + (lvl - 1) * 80;
-    }
-
-    public void addPlayerExp(Player p, int amount) {
-        UUID uuid = p.getUniqueId();
-        int lvl = getPlayerLevel(uuid);
-        int exp = getPlayerExp(uuid);
-
-        exp += Math.max(1, amount);
-
-        while (true) {
-            int need = needPlayerExp(uuid);
-            if (exp < need) break;
-            exp -= need;
-            lvl++;
-            store.setInt(uuid, "player.level", lvl);
+    public KitManager.Kit getSavedKit(UUID uuid) {
+        String raw = store.getString(uuid, "kit.selected", KitManager.Kit.FIGHTER.name());
+        if (raw == null || raw.isBlank())
+            return KitManager.Kit.FIGHTER;
+        try {
+            return KitManager.Kit.valueOf(raw.toUpperCase());
+        } catch (IllegalArgumentException ignored) {
+            return KitManager.Kit.FIGHTER;
         }
+    }
 
-        store.setInt(uuid, "player.exp", exp);
+    public void saveKit(UUID uuid, KitManager.Kit kit) {
+        if (uuid == null || kit == null)
+            return;
+        store.setString(uuid, "kit.selected", kit.name());
         store.save();
     }
 
-    // ======================
-    //  MINER
-    // ======================
+    // =========================
+    // MINER
+    // =========================
     public int getMinerLevel(UUID uuid) {
         return store.getInt(uuid, "miner.level", 1);
     }
@@ -64,43 +56,35 @@ public class ProgressManager {
         return store.getInt(uuid, "miner.exp", 0);
     }
 
-    public int needMinerExp(UUID uuid) {
+    public int getMinerNeedExp(UUID uuid) {
         int lvl = getMinerLevel(uuid);
-        int base = plugin.getConfig().getInt("miner_progress.level_xp_base", 80);
-        int add  = plugin.getConfig().getInt("miner_progress.level_xp_add_per_level", 40);
-        return base + (lvl - 1) * add;
+        return calcNeed(lvl, "miner_progress.level_xp_base", "miner_progress.level_xp_add_per_level");
     }
 
-    public void addMinerExp(Player p, int amount) {
-        if (!plugin.getConfig().getBoolean("miner_progress.enabled", true)) return;
-
+    public void addMinerExp(Player p, int add) {
         UUID uuid = p.getUniqueId();
-        int maxLevel = plugin.getConfig().getInt("miner_progress.max_level", 10);
-
+        int exp = getMinerExp(uuid) + add;
         int lvl = getMinerLevel(uuid);
-        int exp = getMinerExp(uuid);
+        int need = getMinerNeedExp(uuid);
 
-        if (lvl >= maxLevel) return;
+        int max = plugin.getConfig().getInt("miner_progress.max_level", 10);
 
-        exp += Math.max(1, amount);
-
-        while (lvl < maxLevel) {
-            int need = needMinerExp(uuid);
-            if (exp < need) break;
+        while (exp >= need && lvl < max) {
             exp -= need;
             lvl++;
-            store.setInt(uuid, "miner.level", lvl);
+            need = calcNeed(lvl, "miner_progress.level_xp_base", "miner_progress.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Шахтёр повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
         }
 
+        store.setInt(uuid, "miner.level", lvl);
         store.setInt(uuid, "miner.exp", exp);
-        store.save();
 
         applyKitEffects(p);
     }
 
-    // ======================
-    //  FIGHTER (XP за убийства)
-    // ======================
+    // =========================
+    // FIGHTER
+    // =========================
     public int getFighterLevel(UUID uuid) {
         return store.getInt(uuid, "fighter.level", 1);
     }
@@ -109,83 +93,225 @@ public class ProgressManager {
         return store.getInt(uuid, "fighter.exp", 0);
     }
 
-    public int needFighterExp(UUID uuid) {
+    public int getFighterNeedExp(UUID uuid) {
         int lvl = getFighterLevel(uuid);
-        int base = plugin.getConfig().getInt("kit_xp.fighter.level_xp_base", 120);
-        int add  = plugin.getConfig().getInt("kit_xp.fighter.level_xp_add_per_level", 60);
-        return base + (lvl - 1) * add;
+        return calcNeed(lvl, "kit_xp.fighter.level_xp_base", "kit_xp.fighter.level_xp_add_per_level");
     }
 
-    public void addFighterExp(Player p, int amount) {
-        if (!plugin.getConfig().getBoolean("kit_xp.fighter.enabled", true)) return;
-
+    public void addFighterExp(Player p, int add) {
         UUID uuid = p.getUniqueId();
-        int maxLevel = plugin.getConfig().getInt("kit_xp.fighter.max_level", 10);
-
+        int exp = getFighterExp(uuid) + add;
         int lvl = getFighterLevel(uuid);
-        int exp = getFighterExp(uuid);
+        int need = getFighterNeedExp(uuid);
 
-        if (lvl >= maxLevel) return;
+        int max = plugin.getConfig().getInt("kit_xp.fighter.max_level", 10);
 
-        exp += Math.max(1, amount);
-
-        while (lvl < maxLevel) {
-            int need = needFighterExp(uuid);
-            if (exp < need) break;
+        while (exp >= need && lvl < max) {
             exp -= need;
             lvl++;
-            store.setInt(uuid, "fighter.level", lvl);
+            need = calcNeed(lvl, "kit_xp.fighter.level_xp_base", "kit_xp.fighter.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Боец повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
         }
 
+        store.setInt(uuid, "fighter.level", lvl);
         store.setInt(uuid, "fighter.exp", exp);
-        store.save();
+
+        applyKitEffects(p);
     }
 
-    // ======================
-    //  УНИВЕРСАЛЬНЫЙ ЛВЛ/XP КИТА (для scoreboard)
-    // ======================
+    // =========================
+    // BUILDER
+    // =========================
+    public int getBuilderLevel(UUID uuid) {
+        return store.getInt(uuid, "builder.level", 1);
+    }
+
+    public int getBuilderExp(UUID uuid) {
+        return store.getInt(uuid, "builder.exp", 0);
+    }
+
+    public int getBuilderNeedExp(UUID uuid) {
+        int lvl = getBuilderLevel(uuid);
+        return calcNeed(lvl, "kit_xp.builder.level_xp_base", "kit_xp.builder.level_xp_add_per_level");
+    }
+
+    public void addBuilderExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getBuilderExp(uuid) + add;
+        int lvl = getBuilderLevel(uuid);
+        int need = getBuilderNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.builder.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.builder.level_xp_base", "kit_xp.builder.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Билдер повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "builder.level", lvl);
+        store.setInt(uuid, "builder.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
+    // GENERIC KIT access (для scoreboard/GUI)
+    // =========================
+
+    // ✅ Fix: убрали ссылку на ARCHER (чтобы не было cannot find symbol)
     public int getKitLevel(UUID uuid, KitManager.Kit kit) {
-        if (kit == null) return 0;
+        if (kit == null)
+            return 0;
         return switch (kit) {
             case MINER -> getMinerLevel(uuid);
             case FIGHTER -> getFighterLevel(uuid);
-            case ARCHER, BUILDER -> 1; // пока без прокачки
+            case BUILDER -> getBuilderLevel(uuid);
+            default -> 0;
         };
     }
 
     public int getKitExp(UUID uuid, KitManager.Kit kit) {
-        if (kit == null) return 0;
+        if (kit == null)
+            return 0;
         return switch (kit) {
             case MINER -> getMinerExp(uuid);
             case FIGHTER -> getFighterExp(uuid);
-            case ARCHER, BUILDER -> 0;
+            case BUILDER -> getBuilderExp(uuid);
+            default -> 0;
         };
     }
 
     public int getKitNeedExp(UUID uuid, KitManager.Kit kit) {
-        if (kit == null) return 0;
+        if (kit == null)
+            return 0;
         return switch (kit) {
-            case MINER -> needMinerExp(uuid);
-            case FIGHTER -> needFighterExp(uuid);
-            case ARCHER, BUILDER -> 0;
+            case MINER -> getMinerNeedExp(uuid);
+            case FIGHTER -> getFighterNeedExp(uuid);
+            case BUILDER -> getBuilderNeedExp(uuid);
+            default -> 0;
         };
     }
 
-    // ======================
-    //  ЭФФЕКТЫ ОТ КИТОВ
-    // ======================
+    // ✅ Для твоего KitMenu, если где-то случайно передают Player вместо UUID
+    public int getKitLevel(Player p, KitManager.Kit kit) {
+        return getKitLevel(p.getUniqueId(), kit);
+    }
+
+    public int getKitExp(Player p, KitManager.Kit kit) {
+        return getKitExp(p.getUniqueId(), kit);
+    }
+
+    public int getKitNeedExp(Player p, KitManager.Kit kit) {
+        return getKitNeedExp(p.getUniqueId(), kit);
+    }
+
+    // =========================
+    // helpers
+    // =========================
+    private int calcNeed(int lvl, String basePath, String addPath) {
+        int base = plugin.getConfig().getInt(basePath, 80);
+        int add = plugin.getConfig().getInt(addPath, 40);
+        return base + (lvl - 1) * add;
+    }
+
+    /**
+     * Применяет эффекты от кита/уровня. Сейчас: haste у шахтёра.
+     */
     public void applyKitEffects(Player p) {
         KitManager.Kit kit = plugin.kit().getKit(p.getUniqueId());
-        if (kit == null) return;
 
+        PotionEffectType strength = strengthType();
+        Attribute maxHealthAttr = maxHealthAttribute();
+
+        // Чистим только "не свойственные" эффекты, чтобы киты не тащили бафы друг
+        // друга.
+        if (kit != KitManager.Kit.MINER) {
+            p.removePotionEffect(PotionEffectType.HASTE);
+        }
+        if (kit != KitManager.Kit.FIGHTER) {
+            if (strength != null)
+                p.removePotionEffect(strength);
+            p.removePotionEffect(PotionEffectType.HEALTH_BOOST);
+        }
+
+        // ===== MINER: Haste =====
         if (kit == KitManager.Kit.MINER) {
             int lvl = getMinerLevel(p.getUniqueId());
+            int max = plugin.getConfig().getInt("miner_progress.haste_max_level", 4);
+            int hasteLevel = Math.min(Math.max(lvl, 1), max);
 
-            // каждые 2 уровня +1 Haste: 1-2=I, 3-4=II, ...
-            int cap = plugin.getConfig().getInt("miner_progress.haste_max_level", 4);
-            int amp = Math.min(cap, Math.max(0, (lvl - 1) / 2));
-
-            p.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 20 * 70, amp, true, false, true));
+            int amp = Math.max(0, hasteLevel - 1);
+            p.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 20 * 999999, amp, true, false, true));
         }
+
+        // ===== FIGHTER: HP + Strength =====
+        if (kit == KitManager.Kit.FIGHTER) {
+            ConfigurationSection sec = plugin.getConfig().getConfigurationSection("kit_buffs.fighter");
+            boolean enabled = sec == null || sec.getBoolean("enabled", true);
+            if (!enabled)
+                return;
+
+            int lvl = getFighterLevel(p.getUniqueId());
+
+            // HP (Health Boost): lvl2-4 -> I, lvl5-7 -> II, lvl8-10 -> III
+            int hbStart = (sec == null) ? 2 : sec.getInt("health_boost_start_level", 2);
+            int hbEvery = (sec == null) ? 3 : sec.getInt("health_boost_every_levels", 3);
+            int hbMaxLevel = (sec == null) ? 3 : sec.getInt("health_boost_max_level", 3); // 1..n (не amp)
+
+            int hbLevel = 0;
+            if (lvl >= hbStart) {
+                hbLevel = 1 + Math.max(0, (lvl - hbStart) / Math.max(1, hbEvery));
+                hbLevel = Math.min(hbLevel, Math.max(1, hbMaxLevel));
+            }
+            if (hbLevel > 0) {
+                int amp = hbLevel - 1;
+                p.addPotionEffect(new PotionEffect(PotionEffectType.HEALTH_BOOST, 20 * 999999, amp, true, false, true));
+
+                // Визуально "хп не добавилось" часто потому, что max HP вырос,
+                // а текущее HP осталось прежним. Подлечим до нового max.
+                org.bukkit.attribute.AttributeInstance a = (maxHealthAttr == null) ? null
+                        : p.getAttribute(maxHealthAttr);
+                if (a != null) {
+                    double max = a.getValue();
+                    if (p.getHealth() < max) {
+                        p.setHealth(Math.min(max, max));
+                    }
+                }
+            }
+
+            // Strength: по умолчанию lvl6+ -> I, lvl10 -> II
+            int strL1 = (sec == null) ? 6 : sec.getInt("strength_level_1_start", 6);
+            int strL2 = (sec == null) ? 10 : sec.getInt("strength_level_2_start", 10);
+
+            int strLevel = 0;
+            if (lvl >= strL2)
+                strLevel = 2;
+            else if (lvl >= strL1)
+                strLevel = 1;
+
+            if (strLevel > 0) {
+                int amp = strLevel - 1;
+                if (strength != null) {
+                    p.addPotionEffect(new PotionEffect(strength, 20 * 999999, amp, true, false, true));
+                }
+            }
+        }
+    }
+
+    private PotionEffectType strengthType() {
+        // В новых версиях это "strength" (раньше в Bukkit встречалось как
+        // INCREASE_DAMAGE).
+        // Берём по key, чтобы не зависеть от наличия конкретного поля в API.
+        return PotionEffectType.getByKey(NamespacedKey.minecraft("strength"));
+    }
+
+    private Attribute maxHealthAttribute() {
+        // В новых версиях это "max_health", в старых встречалось "generic_max_health".
+        Attribute a = Registry.ATTRIBUTE.get(NamespacedKey.minecraft("max_health"));
+        if (a != null)
+            return a;
+        return Registry.ATTRIBUTE.get(NamespacedKey.minecraft("generic_max_health"));
     }
 }
