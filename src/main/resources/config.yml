@@ -83,13 +83,6 @@ shop:
     SHEARS: 45
     TORCH_16: 20
 
-    # --- блоки ---
-    COBBLESTONE_64: 30
-    OAK_PLANKS_64: 35
-    SPRUCE_PLANKS_64: 35
-    STONE_BRICKS_64: 55
-    GLASS_16: 25
-
     # --- еда ---
     BREAD_16: 22
     COOKED_BEEF_16: 35
@@ -99,14 +92,6 @@ shop:
     POTION_HEALING: 220
     ENDER_PEARL_4: 120
     BASE_SCROLL: 800
-
-  sell:
-    # Подсказка: ЛКМ — продать 1, Shift+ЛКМ — продать всё
-    COBBLESTONE: 1
-    COAL: 4
-    IRON_INGOT: 10
-    GOLD_INGOT: 14
-    DIAMOND: 30
 
 # ---- осада ----
 siege:
@@ -123,7 +108,7 @@ siege:
 # Сколько HP у блоков базы (то, что не указано — не ломается зомби)
 blocks_hp:
   OAK_PLANKS: 30
-  SPRUCE_PLANKS: 30
+  SPRUCE_PLANKS: 45
   BIRCH_PLANKS: 30
   JUNGLE_PLANKS: 30
   ACACIA_PLANKS: 30
@@ -132,8 +117,8 @@ blocks_hp:
   CHERRY_PLANKS: 30
 
   COBBLESTONE: 60
-  STONE: 60
-  STONE_BRICKS: 80
+  STONE: 90
+  STONE_BRICKS: 120
   BRICKS: 70
 
   OAK_FENCE: 20
@@ -149,6 +134,14 @@ repair_gui:
 
 repair_cost:
   points_per_tick: 10
+
+  # ✅ стоимость ремонта зависит от уровня стен (приоритетнее points_per_tick)
+  points_per_tick_by_wall_level:
+    l1: 10
+    l2: 12
+    l3: 16
+    l4: 22
+    l5: 30
 
 # --- mining regen + miner leveling ---
 regen_mining:
@@ -205,13 +198,15 @@ base_resources:
 # --- wall upgrade (builder) ---
 wall_upgrade:
   enabled: true
-  max_level: 3
+  max_level: 5
 
   # ✅ материалы по уровням
   levels:
     l1: OAK_PLANKS
     l2: SPRUCE_PLANKS
     l3: COBBLESTONE
+    l4: STONE
+    l5: STONE_BRICKS
 
   # ✅ скорость апгрейда
   tick_period_ticks: 20
@@ -220,6 +215,14 @@ wall_upgrade:
 
   # ✅ цена за 1 блок (в очках базы)
   points_per_block: 15
+
+  # ✅ цена за 1 блок по уровню (приоритетнее points_per_block)
+  # l2 = апгрейд на 2 уровень, l3 = на 3, и т.д.
+  points_per_block_by_level:
+    l2: 15
+    l3: 25
+    l4: 40
+    l5: 60
 
   # ✅ скан по Y относительно центра базы (чтобы не апгрейдить всё подряд по миру)
   scan_y_min_offset: -5

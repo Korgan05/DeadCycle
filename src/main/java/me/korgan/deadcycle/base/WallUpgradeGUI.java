@@ -60,7 +60,8 @@ public class WallUpgradeGUI implements Listener {
         int done = sessionDone.getOrDefault(id, 0);
 
         double percent = 0;
-        if (total > 0) percent = Math.min(100.0, (done * 100.0) / total);
+        if (total > 0)
+            percent = Math.min(100.0, (done * 100.0) / total);
 
         String nextInfo = ChatColor.GRAY + "След. уровень: " + ChatColor.RED + "недоступно";
         if (current < maxLevel) {
@@ -75,10 +76,10 @@ public class WallUpgradeGUI implements Listener {
                 nextInfo,
                 "",
                 ChatColor.GRAY + "Прогресс сессии: " + ChatColor.AQUA + String.format(Locale.US, "%.1f%%", percent),
-                ChatColor.GRAY + "Прокачено: " + ChatColor.WHITE + done + ChatColor.GRAY + " / " + ChatColor.WHITE + total,
+                ChatColor.GRAY + "Прокачено: " + ChatColor.WHITE + done + ChatColor.GRAY + " / " + ChatColor.WHITE
+                        + total,
                 ChatColor.GRAY + "Очки базы: " + ChatColor.WHITE + plugin.baseResources().getPoints(),
-                ChatColor.GRAY + "Режим: " + (running ? (ChatColor.GREEN + "идёт") : (ChatColor.RED + "остановлен"))
-        );
+                ChatColor.GRAY + "Режим: " + (running ? (ChatColor.GREEN + "идёт") : (ChatColor.RED + "остановлен")));
     }
 
     private ItemStack item(Material mat, String name, String... lore) {
@@ -86,7 +87,8 @@ public class WallUpgradeGUI implements Listener {
         ItemMeta im = it.getItemMeta();
         if (im != null) {
             im.setDisplayName(name);
-            if (lore != null && lore.length > 0) im.setLore(Arrays.asList(lore));
+            if (lore != null && lore.length > 0)
+                im.setLore(Arrays.asList(lore));
             it.setItemMeta(im);
         }
         return it;
@@ -96,7 +98,8 @@ public class WallUpgradeGUI implements Listener {
         String key = "wall_upgrade.levels.l" + level;
         String raw = plugin.getConfig().getString(key);
         Material mat = (raw == null) ? null : Material.matchMaterial(raw);
-        if (mat != null) return mat;
+        if (mat != null)
+            return mat;
 
         // Безопасные дефолты: нужны для старых/сломанных конфигов,
         // иначе меню показывает дуб и блоки не меняются визуально.
@@ -104,8 +107,21 @@ public class WallUpgradeGUI implements Listener {
             case 1 -> Material.OAK_PLANKS;
             case 2 -> Material.SPRUCE_PLANKS;
             case 3 -> Material.COBBLESTONE;
+            case 4 -> Material.STONE;
+            case 5 -> Material.STONE_BRICKS;
             default -> Material.OAK_PLANKS;
         };
+    }
+
+    private int getPointsPerBlockForLevel(int toLevel) {
+        String byLevel = "wall_upgrade.points_per_block_by_level.l" + toLevel;
+        if (plugin.getConfig().isInt(byLevel)) {
+            int v = plugin.getConfig().getInt(byLevel);
+            return Math.max(1, v);
+        }
+
+        int fallback = plugin.getConfig().getInt("wall_upgrade.points_per_block", 15);
+        return Math.max(1, fallback);
     }
 
     private String prettyMat(Material m) {
@@ -114,14 +130,18 @@ public class WallUpgradeGUI implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent e) {
-        if (!(e.getWhoClicked() instanceof Player p)) return;
+        if (!(e.getWhoClicked() instanceof Player p))
+            return;
         String title = e.getView().getTitle();
-        if (title == null) return;
-        if (!ChatColor.stripColor(title).equalsIgnoreCase("Прокачка стен")) return;
+        if (title == null)
+            return;
+        if (!ChatColor.stripColor(title).equalsIgnoreCase("Прокачка стен"))
+            return;
 
         e.setCancelled(true);
 
-        if (e.getCurrentItem() == null) return;
+        if (e.getCurrentItem() == null)
+            return;
         int slot = e.getRawSlot();
 
         if (slot == 15) {
@@ -160,7 +180,8 @@ public class WallUpgradeGUI implements Listener {
             int damaged = plugin.blocks().getDamagedCountOnBase(plugin.base().getCenter(), plugin.base().getRadius());
             if (broken > 0 || damaged > 0) {
                 p.sendMessage(ChatColor.RED + "Нельзя прокачивать стены, пока база повреждена.");
-                p.sendMessage(ChatColor.GRAY + "Сломано: " + ChatColor.WHITE + broken + ChatColor.GRAY + ", повреждено: " + ChatColor.WHITE + damaged);
+                p.sendMessage(ChatColor.GRAY + "Сломано: " + ChatColor.WHITE + broken + ChatColor.GRAY
+                        + ", повреждено: " + ChatColor.WHITE + damaged);
                 return;
             }
         }
@@ -189,7 +210,8 @@ public class WallUpgradeGUI implements Listener {
         targetLevel.put(id, toLevel);
 
         int tickPeriod = plugin.getConfig().getInt("wall_upgrade.tick_period_ticks", 20);
-        if (tickPeriod < 5) tickPeriod = 5;
+        if (tickPeriod < 5)
+            tickPeriod = 5;
 
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> tick(p, from, to), 0L, tickPeriod);
         tasks.put(id, task);
@@ -199,11 +221,13 @@ public class WallUpgradeGUI implements Listener {
     }
 
     private List<Location> scanTargets(Material from) {
-        if (!plugin.base().isEnabled() || plugin.base().getCenter() == null) return Collections.emptyList();
+        if (!plugin.base().isEnabled() || plugin.base().getCenter() == null)
+            return Collections.emptyList();
 
         Location c = plugin.base().getCenter();
         World w = c.getWorld();
-        if (w == null) return Collections.emptyList();
+        if (w == null)
+            return Collections.emptyList();
 
         int r = plugin.base().getRadius();
         int yMin = c.getBlockY() + plugin.getConfig().getInt("wall_upgrade.scan_y_min_offset", -5);
@@ -218,11 +242,13 @@ public class WallUpgradeGUI implements Listener {
             for (int z = cz - r; z <= cz + r; z++) {
                 double dx = (x + 0.5) - c.getX();
                 double dz = (z + 0.5) - c.getZ();
-                if ((dx * dx + dz * dz) > (r * r)) continue;
+                if ((dx * dx + dz * dz) > (r * r))
+                    continue;
 
                 for (int y = yMin; y <= yMax; y++) {
                     Block b = w.getBlockAt(x, y, z);
-                    if (b.getType() == from) out.add(b.getLocation());
+                    if (b.getType() == from)
+                        out.add(b.getLocation());
                 }
             }
         }
@@ -248,7 +274,8 @@ public class WallUpgradeGUI implements Listener {
             int broken = plugin.blocks().getBrokenCountOnBase(plugin.base().getCenter(), plugin.base().getRadius());
             int damaged = plugin.blocks().getDamagedCountOnBase(plugin.base().getCenter(), plugin.base().getRadius());
             if (broken > 0 || damaged > 0) {
-                stop(p, ChatColor.RED + "Прокачка остановлена: сначала почини базу (есть повреждённые/сломанные блоки).");
+                stop(p, ChatColor.RED
+                        + "Прокачка остановлена: сначала почини базу (есть повреждённые/сломанные блоки).");
                 return;
             }
         }
@@ -270,7 +297,8 @@ public class WallUpgradeGUI implements Listener {
         int perLvl = plugin.getConfig().getInt("wall_upgrade.blocks_per_tick_per_builder_level", 1);
         int blocksThisTick = Math.max(1, basePerTick + Math.max(0, builderLvl - 1) * perLvl);
 
-        int pointsPerBlock = plugin.getConfig().getInt("wall_upgrade.points_per_block", 15);
+        int toLevel = targetLevel.getOrDefault(id, plugin.getConfig().getInt("base.wall_level", 1) + 1);
+        int pointsPerBlock = getPointsPerBlockForLevel(toLevel);
 
         int upgradedNow = 0;
 
@@ -283,12 +311,15 @@ public class WallUpgradeGUI implements Listener {
             Location loc = list.get(idx++);
             Block b = loc.getBlock();
 
-            if (!plugin.base().isOnBase(loc)) continue;
-            if (b.getType() != from) continue;
+            if (!plugin.base().isOnBase(loc))
+                continue;
+            if (b.getType() != from)
+                continue;
 
             plugin.baseResources().addPoints(-pointsPerBlock);
 
-            // важно: сбросить состояние урона/сломано, чтобы не было "красных искр" на новом блоке
+            // важно: сбросить состояние урона/сломано, чтобы не было "красных искр" на
+            // новом блоке
             plugin.blocks().clearStateAt(loc);
 
             b.setType(to, false);
@@ -303,15 +334,18 @@ public class WallUpgradeGUI implements Listener {
             sessionDone.put(id, done);
 
             int exp = plugin.getConfig().getInt("kit_xp.builder.exp_per_wall_block_upgrade", 1);
-            if (exp > 0) plugin.progress().addBuilderExp(p, exp * upgradedNow);
+            if (exp > 0)
+                plugin.progress().addBuilderExp(p, exp * upgradedNow);
         }
 
         int total = sessionTotal.getOrDefault(id, 1);
         int done = sessionDone.getOrDefault(id, 0);
         double percent = Math.min(100.0, (done * 100.0) / Math.max(1, total));
 
-        p.sendActionBar(ChatColor.AQUA + "Прокачка стен: " + ChatColor.WHITE + String.format(Locale.US, "%.1f%%", percent)
-                + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Очки базы: " + ChatColor.WHITE + plugin.baseResources().getPoints());
+        p.sendActionBar(
+                ChatColor.AQUA + "Прокачка стен: " + ChatColor.WHITE + String.format(Locale.US, "%.1f%%", percent)
+                        + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Очки базы: " + ChatColor.WHITE
+                        + plugin.baseResources().getPoints());
 
         if (p.getOpenInventory() != null && p.getOpenInventory().getTitle() != null) {
             String t = ChatColor.stripColor(p.getOpenInventory().getTitle());
@@ -344,7 +378,8 @@ public class WallUpgradeGUI implements Listener {
     private void stop(Player p, String msg) {
         UUID id = p.getUniqueId();
         BukkitTask t = tasks.remove(id);
-        if (t != null) t.cancel();
+        if (t != null)
+            t.cancel();
         p.sendMessage(msg);
 
         if (p.getOpenInventory() != null && p.getOpenInventory().getTitle() != null) {
@@ -358,7 +393,8 @@ public class WallUpgradeGUI implements Listener {
 
     private void stopSilent(UUID id) {
         BukkitTask t = tasks.remove(id);
-        if (t != null) t.cancel();
+        if (t != null)
+            t.cancel();
     }
 
     @EventHandler

@@ -76,8 +76,8 @@ public class RepairGUI implements Listener {
                 "",
                 ChatColor.GRAY + "Прогресс сессии: " + ChatColor.AQUA + String.format(Locale.US, "%.1f%%", percent),
                 ChatColor.GRAY + "Очки базы: " + ChatColor.WHITE + plugin.baseResources().getBasePoints(),
-                ChatColor.GRAY + "Режим: " + (running ? (ChatColor.GREEN + "Ремонт идёт") : (ChatColor.RED + "Остановлен"))
-        );
+                ChatColor.GRAY + "Режим: "
+                        + (running ? (ChatColor.GREEN + "Ремонт идёт") : (ChatColor.RED + "Остановлен")));
     }
 
     private ItemStack item(Material mat, String name, String... lore) {
@@ -85,7 +85,8 @@ public class RepairGUI implements Listener {
         ItemMeta im = it.getItemMeta();
         if (im != null) {
             im.setDisplayName(name);
-            if (lore != null && lore.length > 0) im.setLore(Arrays.asList(lore));
+            if (lore != null && lore.length > 0)
+                im.setLore(Arrays.asList(lore));
             it.setItemMeta(im);
         }
         return it;
@@ -93,15 +94,19 @@ public class RepairGUI implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent e) {
-        if (!(e.getWhoClicked() instanceof Player p)) return;
+        if (!(e.getWhoClicked() instanceof Player p))
+            return;
 
         String title = e.getView().getTitle();
-        if (title == null) return;
-        if (!ChatColor.stripColor(title).equalsIgnoreCase(ChatColor.stripColor(TITLE))) return;
+        if (title == null)
+            return;
+        if (!ChatColor.stripColor(title).equalsIgnoreCase(ChatColor.stripColor(TITLE)))
+            return;
 
         e.setCancelled(true);
 
-        if (e.getCurrentItem() == null) return;
+        if (e.getCurrentItem() == null)
+            return;
         int slot = e.getRawSlot();
 
         if (slot == 15) {
@@ -146,9 +151,11 @@ public class RepairGUI implements Listener {
         sessionRepaired.put(id, 0);
 
         int tickPeriod = plugin.getConfig().getInt("repair_gui.tick_period_ticks", 20);
-        if (tickPeriod < 5) tickPeriod = 5;
+        if (tickPeriod < 5)
+            tickPeriod = 5;
 
-        // включаем “глобальный режим ремонта”, чтобы сломанные/поврежденные стали белыми пока чинятся
+        // включаем “глобальный режим ремонта”, чтобы сломанные/поврежденные стали
+        // белыми пока чинятся
         blocks.addActiveRepairer(id);
         updateGlobalRepairMode();
 
@@ -181,8 +188,11 @@ public class RepairGUI implements Listener {
             return;
         }
 
-        int pointsPerTick = plugin.getConfig().getInt("repair_cost.points_per_tick", 10);
-        if (pointsPerTick < 1) pointsPerTick = 1;
+        int wallLevel = plugin.getConfig().getInt("base.wall_level", 1);
+
+        int pointsPerTick = getPointsPerTickForWallLevel(wallLevel);
+        if (pointsPerTick < 1)
+            pointsPerTick = 1;
 
         // корректное списание очков базы
         if (!plugin.baseResources().spendPoints(pointsPerTick)) {
@@ -191,7 +201,8 @@ public class RepairGUI implements Listener {
         }
 
         int amount = plugin.getConfig().getInt("builder.repair_amount", 8);
-        if (amount <= 0) amount = 8;
+        if (amount <= 0)
+            amount = 8;
 
         // автоматический ремонт по базе (сломанные приоритетнее)
         int repairedNow = blocks.repairAnyOnBase(center, radius, amount);
@@ -207,7 +218,8 @@ public class RepairGUI implements Listener {
         // XP билдера за реальный ремонт
         if (plugin.kit().getKit(id) == KitManager.Kit.BUILDER) {
             int exp = plugin.getConfig().getInt("kit_xp.builder.exp_per_repair_tick", 1);
-            if (exp > 0) plugin.progress().addBuilderExp(p, exp);
+            if (exp > 0)
+                plugin.progress().addBuilderExp(p, exp);
         }
 
         int total = sessionTotal.getOrDefault(id, 1);
@@ -215,7 +227,8 @@ public class RepairGUI implements Listener {
         double percent = Math.min(100.0, (rep * 100.0) / Math.max(1, total));
 
         p.sendActionBar(ChatColor.GREEN + "Ремонт: " + ChatColor.AQUA + String.format(Locale.US, "%.1f%%", percent)
-                + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Очки базы: " + ChatColor.WHITE + plugin.baseResources().getBasePoints());
+                + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Очки базы: " + ChatColor.WHITE
+                + plugin.baseResources().getBasePoints());
 
         p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 0.18f, 1.6f);
 
@@ -227,10 +240,22 @@ public class RepairGUI implements Listener {
         }
     }
 
+    private int getPointsPerTickForWallLevel(int wallLevel) {
+        String byLevel = "repair_cost.points_per_tick_by_wall_level.l" + wallLevel;
+        if (plugin.getConfig().isInt(byLevel)) {
+            int v = plugin.getConfig().getInt(byLevel);
+            return Math.max(1, v);
+        }
+
+        int fallback = plugin.getConfig().getInt("repair_cost.points_per_tick", 10);
+        return Math.max(1, fallback);
+    }
+
     private void stopRepair(Player p, String msg) {
         UUID id = p.getUniqueId();
         BukkitTask t = tasks.remove(id);
-        if (t != null) t.cancel();
+        if (t != null)
+            t.cancel();
 
         blocks.removeActiveRepairer(id);
         updateGlobalRepairMode();
@@ -246,7 +271,8 @@ public class RepairGUI implements Listener {
 
     private void stopRepairSilent(UUID id) {
         BukkitTask t = tasks.remove(id);
-        if (t != null) t.cancel();
+        if (t != null)
+            t.cancel();
 
         blocks.removeActiveRepairer(id);
         updateGlobalRepairMode();
@@ -259,11 +285,14 @@ public class RepairGUI implements Listener {
 
     @EventHandler
     public void onClose(InventoryCloseEvent e) {
-        if (!(e.getPlayer() instanceof Player)) return;
+        if (!(e.getPlayer() instanceof Player))
+            return;
 
         String title = e.getView().getTitle();
-        if (title == null) return;
-        if (!ChatColor.stripColor(title).equalsIgnoreCase(ChatColor.stripColor(TITLE))) return;
+        if (title == null)
+            return;
+        if (!ChatColor.stripColor(title).equalsIgnoreCase(ChatColor.stripColor(TITLE)))
+            return;
 
         // ремонт НЕ останавливаем при закрытии (по твоей логике)
     }

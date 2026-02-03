@@ -45,9 +45,7 @@ public class ShopGUI implements Listener {
         COMBAT("§cБой", Material.IRON_SWORD),
         ARMOR("§bБроня", Material.IRON_CHESTPLATE),
         TOOLS("§eИнструменты", Material.IRON_PICKAXE),
-        BLOCKS("§6Блоки", Material.BRICKS),
         FOOD("§aЕда", Material.COOKED_BEEF),
-        SELL("§2Продать", Material.EMERALD),
         SPECIAL("§dОсобое", Material.ENDER_PEARL);
 
         final String display;
@@ -60,7 +58,7 @@ public class ShopGUI implements Listener {
     }
 
     private enum OfferType {
-        BUY, SELL
+        BUY
     }
 
     private record Offer(
@@ -127,15 +125,13 @@ public class ShopGUI implements Listener {
         ViewState state = viewByPlayer.getOrDefault(uuid, new ViewState(Category.COMBAT, 0));
 
         // категории
-        if (slot >= 0 && slot <= 6) {
+        if (slot >= 0 && slot <= 4) {
             Category cat = switch (slot) {
                 case 0 -> Category.COMBAT;
                 case 1 -> Category.ARMOR;
                 case 2 -> Category.TOOLS;
-                case 3 -> Category.BLOCKS;
-                case 4 -> Category.FOOD;
-                case 5 -> Category.SELL;
-                case 6 -> Category.SPECIAL;
+                case 3 -> Category.FOOD;
+                case 4 -> Category.SPECIAL;
                 default -> state.category();
             };
             open(p, cat, 0);
@@ -202,31 +198,8 @@ public class ShopGUI implements Listener {
             return;
         }
 
-        // SELL
-        if (offer.type() == OfferType.SELL) {
-            long price = getSellPrice(offer.icon(), offer.defaultPrice());
-            if (price <= 0) {
-                p.sendMessage("§cПродажа этого предмета отключена.");
-                return;
-            }
-
-            int removed;
-            if (e.isShiftClick()) {
-                removed = removeAll(p, offer.icon());
-            } else {
-                removed = removeAmount(p, offer.icon(), 1);
-            }
-
-            if (removed <= 0) {
-                p.sendMessage("§cУ тебя нет этого предмета.");
-                return;
-            }
-
-            long total = price * (long) removed;
-            plugin.econ().give(p, total);
-            p.sendMessage("§aПродано: §f" + nice(offer.icon()) + " x" + removed + " §7за §e" + total);
-            open(p, state.category(), state.page());
-        }
+        // Продажа в магазине отключена (ресурсы сдаются автоматически при входе на
+        // базу)
     }
 
     @EventHandler
@@ -290,14 +263,12 @@ public class ShopGUI implements Listener {
             inv.setItem(i, bg);
         }
 
-        // категории (0..6)
+        // категории
         setCategoryButton(inv, 0, Category.COMBAT, category == Category.COMBAT);
         setCategoryButton(inv, 1, Category.ARMOR, category == Category.ARMOR);
         setCategoryButton(inv, 2, Category.TOOLS, category == Category.TOOLS);
-        setCategoryButton(inv, 3, Category.BLOCKS, category == Category.BLOCKS);
-        setCategoryButton(inv, 4, Category.FOOD, category == Category.FOOD);
-        setCategoryButton(inv, 5, Category.SELL, category == Category.SELL);
-        setCategoryButton(inv, 6, Category.SPECIAL, category == Category.SPECIAL);
+        setCategoryButton(inv, 3, Category.FOOD, category == Category.FOOD);
+        setCategoryButton(inv, 4, Category.SPECIAL, category == Category.SPECIAL);
 
         // баланс + закрыть
         inv.setItem(SLOT_BALANCE, named(Material.EMERALD, "§eБаланс: §6" + plugin.econ().getMoney(p.getUniqueId())));
@@ -326,8 +297,8 @@ public class ShopGUI implements Listener {
         if (meta != null) {
             meta.displayName(LEGACY.deserialize("§fПодсказка"));
             meta.lore(List.of(
-                    LEGACY.deserialize("§7ЛКМ — купить/продать"),
-                    LEGACY.deserialize("§7Shift+ЛКМ — x4 покупка / продать всё"),
+                    LEGACY.deserialize("§7ЛКМ — купить"),
+                    LEGACY.deserialize("§7Shift+ЛКМ — купить x4"),
                     LEGACY.deserialize("§7Раздел: " + category.display),
                     LEGACY.deserialize("§7Страница: §f" + (page + 1))));
             it.setItemMeta(meta);
@@ -361,9 +332,7 @@ public class ShopGUI implements Listener {
     }
 
     private ItemStack buildOfferItem(Offer offer) {
-        long price = (offer.type() == OfferType.BUY)
-                ? getBuyPrice(offer.key(), offer.defaultPrice())
-                : getSellPrice(offer.icon(), offer.defaultPrice());
+        long price = getBuyPrice(offer.key(), offer.defaultPrice());
 
         ItemStack it;
         if (offer.type() == OfferType.BUY && "POTION_HEALING".equalsIgnoreCase(offer.key())) {
@@ -379,18 +348,11 @@ public class ShopGUI implements Listener {
             meta.displayName(LEGACY.deserialize(offer.displayName()));
 
             List<String> lore = new ArrayList<>();
-            if (offer.type() == OfferType.BUY) {
-                lore.add("§7Цена: §e" + price);
-                lore.add("§7Вы получите: §fx" + offer.amount());
-                lore.add(" ");
-                lore.add("§fЛКМ §7— купить");
-                lore.add("§fShift+ЛКМ §7— купить x4");
-            } else {
-                lore.add("§7Цена за 1: §e" + price);
-                lore.add(" ");
-                lore.add("§fЛКМ §7— продать 1");
-                lore.add("§fShift+ЛКМ §7— продать всё");
-            }
+            lore.add("§7Цена: §e" + price);
+            lore.add("§7Вы получите: §fx" + offer.amount());
+            lore.add(" ");
+            lore.add("§fЛКМ §7— купить");
+            lore.add("§fShift+ЛКМ §7— купить x4");
 
             if (offer.extraLore() != null && !offer.extraLore().isEmpty()) {
                 lore.add(" ");
@@ -429,13 +391,6 @@ public class ShopGUI implements Listener {
         return def;
     }
 
-    private long getSellPrice(Material material, long def) {
-        String path = "shop.sell." + material.name();
-        if (plugin.getConfig().contains(path))
-            return plugin.getConfig().getLong(path);
-        return def;
-    }
-
     private ItemStack createHealingPotion(int amount) {
         ItemStack it = new ItemStack(Material.POTION, Math.max(1, amount));
         ItemMeta raw = it.getItemMeta();
@@ -445,42 +400,6 @@ public class ShopGUI implements Listener {
             it.setItemMeta(meta);
         }
         return it;
-    }
-
-    private int removeAll(Player p, Material m) {
-        int total = 0;
-        for (int i = 0; i < p.getInventory().getSize(); i++) {
-            ItemStack it = p.getInventory().getItem(i);
-            if (it == null || it.getType() != m)
-                continue;
-            total += it.getAmount();
-            p.getInventory().setItem(i, null);
-        }
-        return total;
-    }
-
-    private int removeAmount(Player p, Material m, int amount) {
-        int need = Math.max(0, amount);
-        int removed = 0;
-        for (int i = 0; i < p.getInventory().getSize() && need > 0; i++) {
-            ItemStack it = p.getInventory().getItem(i);
-            if (it == null || it.getType() != m)
-                continue;
-
-            int take = Math.min(need, it.getAmount());
-            need -= take;
-            removed += take;
-            int left = it.getAmount() - take;
-            if (left <= 0)
-                p.getInventory().setItem(i, null);
-            else
-                it.setAmount(left);
-        }
-        return removed;
-    }
-
-    private String nice(Material m) {
-        return m.name().toLowerCase(Locale.ROOT).replace('_', ' ');
     }
 
     private String stripColor(String s) {
@@ -532,18 +451,6 @@ public class ShopGUI implements Listener {
         offers.add(new Offer(OfferType.BUY, Category.TOOLS, "TORCH_16", Material.TORCH, 16, 20,
                 "§eФакелы §7(x16)", List.of()));
 
-        // BLOCKS
-        offers.add(new Offer(OfferType.BUY, Category.BLOCKS, "COBBLESTONE_64", Material.COBBLESTONE, 64, 30,
-                "§6Булыжник §7(x64)", List.of()));
-        offers.add(new Offer(OfferType.BUY, Category.BLOCKS, "OAK_PLANKS_64", Material.OAK_PLANKS, 64, 35,
-                "§6Доски дуба §7(x64)", List.of()));
-        offers.add(new Offer(OfferType.BUY, Category.BLOCKS, "SPRUCE_PLANKS_64", Material.SPRUCE_PLANKS, 64, 35,
-                "§6Доски ели §7(x64)", List.of()));
-        offers.add(new Offer(OfferType.BUY, Category.BLOCKS, "STONE_BRICKS_64", Material.STONE_BRICKS, 64, 55,
-                "§6Каменные кирпичи §7(x64)", List.of()));
-        offers.add(new Offer(OfferType.BUY, Category.BLOCKS, "GLASS_16", Material.GLASS, 16, 25,
-                "§6Стекло §7(x16)", List.of()));
-
         // FOOD
         offers.add(new Offer(OfferType.BUY, Category.FOOD, "BREAD_16", Material.BREAD, 16, 22,
                 "§aХлеб §7(x16)", List.of()));
@@ -560,16 +467,5 @@ public class ShopGUI implements Listener {
         offers.add(new Offer(OfferType.BUY, Category.SPECIAL, "BASE_SCROLL", Material.PAPER, 1, 800,
                 "§dСвиток телепорта на базу", List.of("§7ПКМ — телепорт на базу")));
 
-        // SELL (консервативные дефолты; можно переопределить в config.yml)
-        offers.add(new Offer(OfferType.SELL, Category.SELL, "COBBLESTONE", Material.COBBLESTONE, 1, 1,
-                "§2Продать: §fБулыжник", List.of()));
-        offers.add(new Offer(OfferType.SELL, Category.SELL, "COAL", Material.COAL, 1, 4,
-                "§2Продать: §fУголь", List.of()));
-        offers.add(new Offer(OfferType.SELL, Category.SELL, "IRON_INGOT", Material.IRON_INGOT, 1, 10,
-                "§2Продать: §fЖелезо", List.of()));
-        offers.add(new Offer(OfferType.SELL, Category.SELL, "GOLD_INGOT", Material.GOLD_INGOT, 1, 14,
-                "§2Продать: §fЗолото", List.of()));
-        offers.add(new Offer(OfferType.SELL, Category.SELL, "DIAMOND", Material.DIAMOND, 1, 30,
-                "§2Продать: §fАлмаз", List.of()));
     }
 }

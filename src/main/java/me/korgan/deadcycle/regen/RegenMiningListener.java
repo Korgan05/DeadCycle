@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 
@@ -22,19 +23,61 @@ public class RegenMiningListener implements Listener {
 
     private final DeadCyclePlugin plugin;
 
-    // ключ: worldUUID + packed xyz
-    private final Map<String, Material> regenCobble = new HashMap<>();
+    private record Pos(UUID worldId, int x, int y, int z) {
+        int chunkX() {
+            return x >> 4;
+        }
+
+        int chunkZ() {
+            return z >> 4;
+        }
+    }
+
+    private record RegenEntry(Material original, long restoreAtMillis) {
+    }
+
+    private final Map<Pos, RegenEntry> regenCobble = new HashMap<>();
 
     public RegenMiningListener(DeadCyclePlugin plugin) {
         this.plugin = plugin;
     }
 
-    private String key(World w, int x, int y, int z) {
-        return w.getUID() + ":" + x + ":" + y + ":" + z;
+    private boolean isRegenCobble(Block b) {
+        return regenCobble.containsKey(new Pos(b.getWorld().getUID(), b.getX(), b.getY(), b.getZ()));
     }
 
-    private boolean isRegenCobble(Block b) {
-        return regenCobble.containsKey(key(b.getWorld(), b.getX(), b.getY(), b.getZ()));
+    private boolean tryRestore(Pos pos) {
+        RegenEntry entry = regenCobble.get(pos);
+        if (entry == null)
+            return false;
+
+        World w = Bukkit.getWorld(pos.worldId());
+        if (w == null) {
+            regenCobble.remove(pos);
+            return false;
+        }
+
+        // Если чанк не загружен — дождёмся ChunkLoadEvent
+        if (!w.isChunkLoaded(pos.chunkX(), pos.chunkZ())) {
+            return false;
+        }
+
+        Block b = w.getBlockAt(pos.x(), pos.y(), pos.z());
+        Material type = b.getType();
+
+        // если игрок/мир заменил блок — больше не трогаем
+        if (type != Material.COBBLESTONE) {
+            regenCobble.remove(pos);
+            return false;
+        }
+
+        if (System.currentTimeMillis() < entry.restoreAtMillis()) {
+            return false;
+        }
+
+        b.setType(entry.original(), false);
+        regenCobble.remove(pos);
+        return true;
     }
 
     @EventHandler
@@ -42,7 +85,8 @@ public class RegenMiningListener implements Listener {
         Player p = e.getPlayer();
         Block b = e.getBlock();
 
-        if (p.getGameMode() == GameMode.CREATIVE) return;
+        if (p.getGameMode() == GameMode.CREATIVE)
+            return;
 
         // запрет ломать блоки НА БАЗЕ
         if (plugin.base().isEnabled() && plugin.base().isOnBase(b.getLocation())) {
@@ -85,8 +129,11 @@ public class RegenMiningListener implements Listener {
         b.setType(Material.COBBLESTONE, false);
 
         // помечаем этот булыжник как "временный", чтобы его нельзя было ломать
-        String k = key(b.getWorld(), b.getX(), b.getY(), b.getZ());
-        regenCobble.put(k, type); // запомним оригинал (STONE/ORE)
+        int restoreSeconds = plugin.getConfig().getInt("regen_mining.restore_seconds", 90);
+        long restoreAt = System.currentTimeMillis() + (restoreSeconds * 1000L);
+
+        Pos pos = new Pos(b.getWorld().getUID(), b.getX(), b.getY(), b.getZ());
+        regenCobble.put(pos, new RegenEntry(type, restoreAt));
 
         // опыт майнеру
         if (plugin.kit().getKit(p.getUniqueId()) == KitManager.Kit.MINER) {
@@ -101,17 +148,24 @@ public class RegenMiningListener implements Listener {
             tool.setItemMeta(dmg);
         }
 
-        // восстановление обратно
-        int restoreSeconds = plugin.getConfig().getInt("regen_mining.restore_seconds", 90);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            // если блок все еще булыжник — восстановим руду/камень
-            if (b.getType() == Material.COBBLESTONE) {
-                Material original = regenCobble.get(k);
-                if (original != null) {
-                    b.setType(original, false);
-                }
-            }
-            regenCobble.remove(k);
-        }, restoreSeconds * 20L);
+        // восстановление обратно (если чанк выгрузится — восстановим при следующей
+        // загрузке)
+        Bukkit.getScheduler().runTaskLater(plugin, () -> tryRestore(pos), restoreSeconds * 20L);
+    }
+
+    @EventHandler
+    public void onChunkLoad(ChunkLoadEvent e) {
+        UUID worldId = e.getWorld().getUID();
+        int cx = e.getChunk().getX();
+        int cz = e.getChunk().getZ();
+
+        // простая фильтрация: восстанавливаем только позиции из этого чанка
+        for (Pos pos : new java.util.ArrayList<>(regenCobble.keySet())) {
+            if (!pos.worldId().equals(worldId))
+                continue;
+            if (pos.chunkX() != cx || pos.chunkZ() != cz)
+                continue;
+            tryRestore(pos);
+        }
     }
 }

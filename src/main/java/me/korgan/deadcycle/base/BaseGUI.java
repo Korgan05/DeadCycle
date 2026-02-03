@@ -36,7 +36,8 @@ public class BaseGUI implements Listener {
         Inventory inv = Bukkit.createInventory(null, 27, title);
 
         // рамка
-        for (int i = 0; i < inv.getSize(); i++) inv.setItem(i, pane());
+        for (int i = 0; i < inv.getSize(); i++)
+            inv.setItem(i, pane());
 
         // инфо (ресурсы базы + игроки на базе + фаза)
         inv.setItem(SLOT_INFO, infoItem(p));
@@ -69,7 +70,7 @@ public class BaseGUI implements Listener {
         long stone = br.getPoints(BaseResourceManager.ResourceType.STONE);
         long coal = br.getPoints(BaseResourceManager.ResourceType.COAL);
         long iron = br.getPoints(BaseResourceManager.ResourceType.IRON);
-        long dia  = br.getPoints(BaseResourceManager.ResourceType.DIAMOND);
+        long dia = br.getPoints(BaseResourceManager.ResourceType.DIAMOND);
 
         int onBase = plugin.base().countOnBase();
 
@@ -93,31 +94,35 @@ public class BaseGUI implements Listener {
         return button(Material.BOOK,
                 ChatColor.GREEN + "Статус базы",
                 ChatColor.YELLOW + "На базе: " + ChatColor.WHITE + onBase,
-                ChatColor.AQUA + "Фаза: " + ChatColor.WHITE + phase + ChatColor.GRAY + " | День: " + ChatColor.WHITE + day,
+                ChatColor.AQUA + "Фаза: " + ChatColor.WHITE + phase + ChatColor.GRAY + " | День: " + ChatColor.WHITE
+                        + day,
                 ChatColor.GOLD + "Твои деньги: " + ChatColor.WHITE + money,
                 ChatColor.BLUE + "Твой кит: " + ChatColor.WHITE + kitName,
                 " ",
-                ChatColor.GREEN + "Стены: " + ChatColor.WHITE + wallLevel + ChatColor.GRAY + " / " + ChatColor.WHITE + maxWallLevel,
+                ChatColor.GREEN + "Стены: " + ChatColor.WHITE + wallLevel + ChatColor.GRAY + " / " + ChatColor.WHITE
+                        + maxWallLevel,
                 ChatColor.GRAY + "След. уровень: " + wallNext,
                 " ",
                 ChatColor.AQUA + "Очки базы: " + ChatColor.WHITE + total,
                 ChatColor.GRAY + "Камень: " + stone,
                 ChatColor.GRAY + "Уголь: " + coal,
                 ChatColor.GRAY + "Железо: " + iron,
-                ChatColor.GRAY + "Алмазы: " + dia
-        );
+                ChatColor.GRAY + "Алмазы: " + dia);
     }
 
     private Material getWallMaterialForLevel(int level) {
         String key = "wall_upgrade.levels.l" + level;
         String raw = plugin.getConfig().getString(key);
         Material mat = (raw == null) ? null : Material.matchMaterial(raw);
-        if (mat != null) return mat;
+        if (mat != null)
+            return mat;
 
         return switch (level) {
             case 1 -> Material.OAK_PLANKS;
             case 2 -> Material.SPRUCE_PLANKS;
             case 3 -> Material.COBBLESTONE;
+            case 4 -> Material.STONE;
+            case 5 -> Material.STONE_BRICKS;
             default -> Material.OAK_PLANKS;
         };
     }
@@ -128,10 +133,12 @@ public class BaseGUI implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent e) {
-        if (!title.equals(e.getView().getTitle())) return;
+        if (!title.equals(e.getView().getTitle()))
+            return;
         e.setCancelled(true);
 
-        if (!(e.getWhoClicked() instanceof Player p)) return;
+        if (!(e.getWhoClicked() instanceof Player p))
+            return;
 
         // безопасность: /base только на базе
         if (!plugin.base().isEnabled() || !plugin.base().isOnBase(p.getLocation())) {
