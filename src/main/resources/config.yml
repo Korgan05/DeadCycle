@@ -168,7 +168,7 @@ kit_xp:
     exp_per_zombie: 2
     level_xp_base: 70
     level_xp_add_per_level: 45
-    max_level: 5
+    max_level: 6
 
   builder:
     exp_per_repair_tick: 1
@@ -196,7 +196,7 @@ kit_buffs:
 
     # "На грани жизни" (для 2 уровня) — порог в сердцах
     life_threshold_hearts: 3.0
-    # "На грани смерти" (для 3-5 уровней) — порог в сердцах
+    # "На грани смерти" (для 3+ уровней) — порог в сердцах
     death_threshold_hearts: 2.0
 
     # Кулдаун между срабатываниями (сек)
@@ -205,6 +205,11 @@ kit_buffs:
     # Рёв на 5 уровне
     roar_radius: 5
     roar_fear_seconds: 5
+
+    # Партиклы при срабатывании берсерка (отдельная анимация по уровню)
+    particles:
+      enabled: true
+      duration_ticks: 32
 
 # --- base resources ---
 base_resources:
