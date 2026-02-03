@@ -164,6 +164,12 @@ kit_xp:
     level_xp_add_per_level: 35
     max_level: 10
 
+  berserk:
+    exp_per_zombie: 2
+    level_xp_base: 70
+    level_xp_add_per_level: 45
+    max_level: 5
+
   builder:
     exp_per_repair_tick: 1
     exp_per_wall_block_upgrade: 1
@@ -184,6 +190,21 @@ kit_buffs:
     # Strength: lvl6+ -> I, lvl10 -> II (по умолчанию)
     strength_level_1_start: 6
     strength_level_2_start: 10
+
+  berserk:
+    enabled: true
+
+    # "На грани жизни" (для 2 уровня) — порог в сердцах
+    life_threshold_hearts: 3.0
+    # "На грани смерти" (для 3-5 уровней) — порог в сердцах
+    death_threshold_hearts: 2.0
+
+    # Кулдаун между срабатываниями (сек)
+    proc_cooldown_seconds: 75
+
+    # Рёв на 5 уровне
+    roar_radius: 5
+    roar_fear_seconds: 5
 
 # --- base resources ---
 base_resources:

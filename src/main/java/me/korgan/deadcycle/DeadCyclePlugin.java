@@ -92,6 +92,7 @@ public class DeadCyclePlugin extends JavaPlugin {
 
         Bukkit.getPluginManager().registerEvents(kit, this);
         Bukkit.getPluginManager().registerEvents(kitMenu, this);
+        Bukkit.getPluginManager().registerEvents(new BerserkListener(this), this);
 
         Bukkit.getPluginManager().registerEvents(repairGui, this);
         Bukkit.getPluginManager().registerEvents(baseGui, this);

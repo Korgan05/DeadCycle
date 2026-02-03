@@ -42,6 +42,11 @@ public class KitMenu implements Listener {
                 ChatColor.AQUA + "Лучник",
                 ChatColor.GRAY + "Дальний бой"));
 
+        inv.setItem(24, item(Material.NETHERITE_AXE,
+                ChatColor.DARK_RED + "Берсерк",
+                ChatColor.GRAY + "Ярость на грани смерти",
+                ChatColor.GRAY + "Прокает от низкого HP"));
+
         p.openInventory(inv);
     }
 
@@ -50,7 +55,8 @@ public class KitMenu implements Listener {
         ItemMeta im = it.getItemMeta();
         if (im != null) {
             im.setDisplayName(name);
-            if (lore != null && lore.length > 0) im.setLore(Arrays.asList(lore));
+            if (lore != null && lore.length > 0)
+                im.setLore(Arrays.asList(lore));
             it.setItemMeta(im);
         }
         return it;
@@ -58,15 +64,19 @@ public class KitMenu implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent e) {
-        if (!(e.getWhoClicked() instanceof Player p)) return;
-        if (e.getView().getTitle() == null) return;
+        if (!(e.getWhoClicked() instanceof Player p))
+            return;
+        if (e.getView().getTitle() == null)
+            return;
 
         String title = ChatColor.stripColor(e.getView().getTitle());
-        if (!"Выбор кита".equalsIgnoreCase(title)) return;
+        if (!"Выбор кита".equalsIgnoreCase(title))
+            return;
 
         e.setCancelled(true);
 
-        if (e.getCurrentItem() == null) return;
+        if (e.getCurrentItem() == null)
+            return;
 
         int slot = e.getRawSlot();
 
@@ -98,6 +108,14 @@ public class KitMenu implements Listener {
         if (slot == 22) {
             plugin.kit().giveKit(p, KitManager.Kit.ARCHER);
             p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.AQUA + "Лучник");
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
+            p.closeInventory();
+            return;
+        }
+
+        if (slot == 24) {
+            plugin.kit().giveKit(p, KitManager.Kit.BERSERK);
+            p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.DARK_RED + "Берсерк");
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
             p.closeInventory();
         }

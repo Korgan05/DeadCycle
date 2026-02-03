@@ -157,6 +157,44 @@ public class ProgressManager {
     }
 
     // =========================
+    // BERSERK
+    // =========================
+
+    public int getBerserkLevel(UUID uuid) {
+        return store.getInt(uuid, "berserk.level", 1);
+    }
+
+    public int getBerserkExp(UUID uuid) {
+        return store.getInt(uuid, "berserk.exp", 0);
+    }
+
+    public int getBerserkNeedExp(UUID uuid) {
+        int lvl = getBerserkLevel(uuid);
+        return calcNeed(lvl, "kit_xp.berserk.level_xp_base", "kit_xp.berserk.level_xp_add_per_level");
+    }
+
+    public void addBerserkExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getBerserkExp(uuid) + add;
+        int lvl = getBerserkLevel(uuid);
+        int need = getBerserkNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.berserk.max_level", 5);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.berserk.level_xp_base", "kit_xp.berserk.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Берсерк повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "berserk.level", lvl);
+        store.setInt(uuid, "berserk.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
     // GENERIC KIT access (для scoreboard/GUI)
     // =========================
 
@@ -168,6 +206,7 @@ public class ProgressManager {
             case MINER -> getMinerLevel(uuid);
             case FIGHTER -> getFighterLevel(uuid);
             case BUILDER -> getBuilderLevel(uuid);
+            case BERSERK -> getBerserkLevel(uuid);
             default -> 0;
         };
     }
@@ -179,6 +218,7 @@ public class ProgressManager {
             case MINER -> getMinerExp(uuid);
             case FIGHTER -> getFighterExp(uuid);
             case BUILDER -> getBuilderExp(uuid);
+            case BERSERK -> getBerserkExp(uuid);
             default -> 0;
         };
     }
@@ -190,6 +230,7 @@ public class ProgressManager {
             case MINER -> getMinerNeedExp(uuid);
             case FIGHTER -> getFighterNeedExp(uuid);
             case BUILDER -> getBuilderNeedExp(uuid);
+            case BERSERK -> getBerserkNeedExp(uuid);
             default -> 0;
         };
     }

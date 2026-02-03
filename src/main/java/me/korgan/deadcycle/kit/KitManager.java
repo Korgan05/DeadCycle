@@ -20,7 +20,8 @@ public class KitManager implements Listener {
         FIGHTER,
         MINER,
         BUILDER,
-        ARCHER
+        ARCHER,
+        BERSERK
     }
 
     private final DeadCyclePlugin plugin;
@@ -51,7 +52,8 @@ public class KitManager implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
         // Восстанавливаем выбранный кит и применяем эффекты (иначе после рестарта
-        // игрок остаётся с предметами кита, но логически считается FIGHTER и без бафов).
+        // игрок остаётся с предметами кита, но логически считается FIGHTER и без
+        // бафов).
         try {
             Player p = e.getPlayer();
             Kit saved = plugin.progress().getSavedKit(p.getUniqueId());
@@ -78,6 +80,7 @@ public class KitManager implements Listener {
             case MINER -> giveMiner(p);
             case BUILDER -> giveBuilder(p);
             case ARCHER -> giveArcher(p);
+            case BERSERK -> giveBerserk(p);
         }
 
         // применяем эффекты/бафы кита сразу после выдачи
@@ -90,6 +93,12 @@ public class KitManager implements Listener {
     private void giveFighter(Player p) {
         p.getInventory().addItem(new ItemStack(Material.IRON_SWORD));
         p.getInventory().addItem(new ItemStack(Material.SHIELD));
+        p.getInventory().addItem(new ItemStack(Material.COOKED_BEEF, 16));
+    }
+
+    private void giveBerserk(Player p) {
+        // Стартовые предметы берсерка (пока минимально, дальше можно расширять)
+        p.getInventory().addItem(new ItemStack(Material.IRON_SWORD));
         p.getInventory().addItem(new ItemStack(Material.COOKED_BEEF, 16));
     }
 
@@ -127,8 +136,7 @@ public class KitManager implements Listener {
             im.setDisplayName(ChatColor.GREEN + "Ремонт базы");
             im.setLore(Arrays.asList(
                     ChatColor.GRAY + "ПКМ — открыть меню ремонта",
-                    ChatColor.DARK_GRAY + "Только для билдера"
-            ));
+                    ChatColor.DARK_GRAY + "Только для билдера"));
             im.getPersistentDataContainer().set(builderRepairKey, PersistentDataType.BYTE, (byte) 1);
             it.setItemMeta(im);
         }
@@ -143,8 +151,7 @@ public class KitManager implements Listener {
             im.setLore(Arrays.asList(
                     ChatColor.GRAY + "ПКМ — открыть меню прокачки",
                     ChatColor.GRAY + "Потом ПКМ по блоку на базе",
-                    ChatColor.DARK_GRAY + "Только для билдера"
-            ));
+                    ChatColor.DARK_GRAY + "Только для билдера"));
             im.getPersistentDataContainer().set(builderUpgradeKey, PersistentDataType.BYTE, (byte) 1);
             it.setItemMeta(im);
         }
@@ -152,15 +159,19 @@ public class KitManager implements Listener {
     }
 
     public boolean isBuilderRepairTool(ItemStack it) {
-        if (it == null || it.getType() != Material.ANVIL) return false;
-        if (!it.hasItemMeta()) return false;
+        if (it == null || it.getType() != Material.ANVIL)
+            return false;
+        if (!it.hasItemMeta())
+            return false;
         Byte v = it.getItemMeta().getPersistentDataContainer().get(builderRepairKey, PersistentDataType.BYTE);
         return v != null && v == (byte) 1;
     }
 
     public boolean isBuilderWallUpgradeTool(ItemStack it) {
-        if (it == null || it.getType() != Material.SMITHING_TABLE) return false;
-        if (!it.hasItemMeta()) return false;
+        if (it == null || it.getType() != Material.SMITHING_TABLE)
+            return false;
+        if (!it.hasItemMeta())
+            return false;
         Byte v = it.getItemMeta().getPersistentDataContainer().get(builderUpgradeKey, PersistentDataType.BYTE);
         return v != null && v == (byte) 1;
     }
