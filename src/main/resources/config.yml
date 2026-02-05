@@ -168,7 +168,7 @@ kit_xp:
     exp_per_zombie: 2
     level_xp_base: 70
     level_xp_add_per_level: 45
-    max_level: 6
+    max_level: 10
 
   builder:
     exp_per_repair_tick: 1
@@ -209,7 +209,15 @@ kit_buffs:
     # Партиклы при срабатывании берсерка (отдельная анимация по уровню)
     particles:
       enabled: true
-      duration_ticks: 32
+      # Proc-партиклы работают пока активны бафы (сила/сопротивление),
+      # но на всякий случай есть лимит по времени.
+      max_ticks: 1200
+      period: 4
+      proc_burst_ticks: 40
+      roar_enabled: true
+      # Если 0 — шаги волны считаются от радиуса (плавнее).
+      roar_steps: 0
+      roar_period: 1
 
 # --- base resources ---
 base_resources:

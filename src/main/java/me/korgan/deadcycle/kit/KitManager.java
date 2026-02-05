@@ -1,7 +1,9 @@
 package me.korgan.deadcycle.kit;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -51,11 +53,25 @@ public class KitManager implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
-        // Восстанавливаем выбранный кит и применяем эффекты (иначе после рестарта
-        // игрок остаётся с предметами кита, но логически считается FIGHTER и без
-        // бафов).
         try {
             Player p = e.getPlayer();
+
+            // Если по правилам игрок ОБЯЗАН выбрать кит — не восстанавливаем прошлый.
+            if (plugin.progress().isKitChoiceRequired(p.getUniqueId())) {
+                setKit(p.getUniqueId(), Kit.FIGHTER);
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (!p.isOnline())
+                        return;
+                    if (p.getGameMode() == GameMode.SPECTATOR)
+                        return;
+                    plugin.kitMenu().open(p);
+                }, 20L);
+                return;
+            }
+
+            // Восстанавливаем выбранный кит и применяем эффекты (иначе после рестарта
+            // игрок остаётся с предметами кита, но логически считается FIGHTER и без
+            // бафов).
             Kit saved = plugin.progress().getSavedKit(p.getUniqueId());
             setKit(p.getUniqueId(), saved);
             plugin.progress().applyKitEffects(p);

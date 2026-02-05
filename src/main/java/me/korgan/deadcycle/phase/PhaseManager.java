@@ -11,7 +11,9 @@ import org.bukkit.scheduler.BukkitTask;
 
 public class PhaseManager {
 
-    public enum Phase { DAY, NIGHT }
+    public enum Phase {
+        DAY, NIGHT
+    }
 
     private final DeadCyclePlugin plugin;
     private final SiegeManager siege;
@@ -30,8 +32,13 @@ public class PhaseManager {
         this.bar = Bukkit.createBossBar("DeadCycle", BarColor.GREEN, BarStyle.SEGMENTED_10);
     }
 
-    public Phase getPhase() { return phase; }
-    public int getDayCount() { return dayCount; }
+    public Phase getPhase() {
+        return phase;
+    }
+
+    public int getDayCount() {
+        return dayCount;
+    }
 
     public void start() {
         stop();
@@ -43,7 +50,8 @@ public class PhaseManager {
         switchToDay(true);
 
         task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (secondsLeft > 0) secondsLeft--;
+            if (secondsLeft > 0)
+                secondsLeft--;
 
             double total = (phase == Phase.DAY)
                     ? plugin.getConfig().getInt("phase.day_seconds", 600)
@@ -56,16 +64,20 @@ public class PhaseManager {
                     + dayCount + " | " + secondsLeft + "s");
 
             if (secondsLeft == 0) {
-                if (phase == Phase.DAY) switchToNight();
-                else switchToDay(false);
+                if (phase == Phase.DAY)
+                    switchToNight();
+                else
+                    switchToDay(false);
             }
         }, 20L, 20L);
 
         // чтобы тем, кто зашёл позже, тоже показывало BossBar
         Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (!bar.isVisible()) return;
+            if (!bar.isVisible())
+                return;
             Bukkit.getOnlinePlayers().forEach(p -> {
-                if (!bar.getPlayers().contains(p)) bar.addPlayer(p);
+                if (!bar.getPlayers().contains(p))
+                    bar.addPlayer(p);
             });
         }, 40L, 40L);
     }
@@ -83,9 +95,12 @@ public class PhaseManager {
     }
 
     public void forcePhase(String phaseName) {
-        if (phaseName == null) return;
-        if (phaseName.equalsIgnoreCase("day")) switchToDay(false);
-        if (phaseName.equalsIgnoreCase("night")) switchToNight();
+        if (phaseName == null)
+            return;
+        if (phaseName.equalsIgnoreCase("day"))
+            switchToDay(false);
+        if (phaseName.equalsIgnoreCase("night"))
+            switchToNight();
     }
 
     private void switchToDay(boolean first) {
@@ -94,13 +109,22 @@ public class PhaseManager {
         plugin.zombie().stopNight();
         siege.stop();
 
-        if (first) dayCount = 1;
-        else dayCount++;
+        if (first)
+            dayCount = 1;
+        else
+            dayCount++;
 
         secondsLeft = plugin.getConfig().getInt("phase.day_seconds", 600);
 
-        for (World w : Bukkit.getWorlds()) w.setTime(1000);
+        for (World w : Bukkit.getWorlds())
+            w.setTime(1000);
         bar.setColor(BarColor.GREEN);
+
+        // Респавним игроков, которые умерли ночью и были в spectator.
+        try {
+            plugin.deathSpectator().reviveAllAtDayStart();
+        } catch (Throwable ignored) {
+        }
     }
 
     private void switchToNight() {
@@ -108,7 +132,8 @@ public class PhaseManager {
 
         secondsLeft = plugin.getConfig().getInt("phase.night_seconds", 300);
 
-        for (World w : Bukkit.getWorlds()) w.setTime(13000);
+        for (World w : Bukkit.getWorlds())
+            w.setTime(13000);
         bar.setColor(BarColor.PURPLE);
 
         plugin.zombie().startNight(dayCount);

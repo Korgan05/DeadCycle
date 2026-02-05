@@ -15,6 +15,7 @@ import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -105,10 +106,25 @@ public class RegenMiningListener implements Listener {
 
         Material type = b.getType();
         Material drop = null;
+        Collection<ItemStack> customDrops = null;
 
         // ЧТО ДАЕМ В РУКИ
         if (type == Material.STONE) {
             drop = Material.COBBLESTONE;
+        } else if (type == Material.ANDESITE) {
+            drop = Material.ANDESITE;
+        } else if (type == Material.GRANITE) {
+            drop = Material.GRANITE;
+        } else if (type == Material.DIORITE) {
+            drop = Material.DIORITE;
+        } else if (type == Material.GRAVEL) {
+            // Сохраняем ванильные дропы (гравий/кремень, зависит от удачи/инструмента)
+            ItemStack tool = p.getInventory().getItemInMainHand();
+            try {
+                customDrops = b.getDrops(tool, p);
+            } catch (Throwable ignored) {
+                customDrops = null;
+            }
         } else if (type == Material.COAL_ORE) {
             drop = Material.COAL;
         } else if (type == Material.IRON_ORE) {
@@ -123,7 +139,21 @@ public class RegenMiningListener implements Listener {
         e.setCancelled(true);
 
         // даем дроп
-        p.getInventory().addItem(new ItemStack(drop, 1));
+        if (customDrops != null) {
+            boolean gaveAny = false;
+            for (ItemStack it : customDrops) {
+                if (it == null || it.getType() == Material.AIR || it.getAmount() <= 0)
+                    continue;
+                p.getInventory().addItem(it);
+                gaveAny = true;
+            }
+            if (!gaveAny) {
+                // fallback
+                p.getInventory().addItem(new ItemStack(Material.GRAVEL, 1));
+            }
+        } else {
+            p.getInventory().addItem(new ItemStack(drop, 1));
+        }
 
         // ставим булыжник на место
         b.setType(Material.COBBLESTONE, false);

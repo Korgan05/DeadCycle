@@ -3,12 +3,14 @@ package me.korgan.deadcycle.kit;
 import me.korgan.deadcycle.DeadCyclePlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -83,6 +85,7 @@ public class KitMenu implements Listener {
         // ✅ ВАЖНО: выдаём кит предметами, а не просто setKit()
         if (slot == 11) {
             plugin.kit().giveKit(p, KitManager.Kit.FIGHTER);
+            plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
             p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.RED + "Боец");
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
             p.closeInventory();
@@ -91,6 +94,7 @@ public class KitMenu implements Listener {
 
         if (slot == 13) {
             plugin.kit().giveKit(p, KitManager.Kit.MINER);
+            plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
             p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.GOLD + "Шахтёр");
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
             p.closeInventory();
@@ -99,6 +103,7 @@ public class KitMenu implements Listener {
 
         if (slot == 15) {
             plugin.kit().giveKit(p, KitManager.Kit.BUILDER);
+            plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
             p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.GREEN + "Билдер");
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
             p.closeInventory();
@@ -107,6 +112,7 @@ public class KitMenu implements Listener {
 
         if (slot == 22) {
             plugin.kit().giveKit(p, KitManager.Kit.ARCHER);
+            plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
             p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.AQUA + "Лучник");
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
             p.closeInventory();
@@ -115,9 +121,33 @@ public class KitMenu implements Listener {
 
         if (slot == 24) {
             plugin.kit().giveKit(p, KitManager.Kit.BERSERK);
+            plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
             p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.DARK_RED + "Берсерк");
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
             p.closeInventory();
         }
+    }
+
+    @EventHandler
+    public void onClose(InventoryCloseEvent e) {
+        if (!(e.getPlayer() instanceof Player p))
+            return;
+        if (e.getView().getTitle() == null)
+            return;
+
+        String title = ChatColor.stripColor(e.getView().getTitle());
+        if (!"Выбор кита".equalsIgnoreCase(title))
+            return;
+
+        if (!plugin.progress().isKitChoiceRequired(p.getUniqueId()))
+            return;
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!p.isOnline())
+                return;
+            if (p.getGameMode() == GameMode.SPECTATOR)
+                return;
+            open(p);
+        });
     }
 }

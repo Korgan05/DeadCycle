@@ -256,11 +256,18 @@ public class BlockHealthManager {
             b.setType(restore, false);
 
             int max = getMaxHp(restore);
-            if (max > 0)
-                hp.put(pos, max);
+            if (max <= 0)
+                return 0;
+
+            // ВАЖНО: чтобы сломанные блоки не чинились быстрее повреждённых,
+            // не восстанавливаем сразу полный HP. Делаем восстановление по amount
+            // (как обычный ремонт), просто первый тик возвращает блок на место.
+            int add = Math.max(1, amount);
+            int newHp = Math.min(max, add);
+            hp.put(pos, newHp);
 
             markRepairing(pos, 900);
-            return Math.max(1, max);
+            return newHp;
         }
 
         // если поврежден — добавляем HP

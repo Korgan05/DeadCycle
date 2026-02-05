@@ -45,6 +45,19 @@ public class ProgressManager {
         store.save();
     }
 
+    public boolean isKitChoiceRequired(UUID uuid) {
+        if (uuid == null)
+            return false;
+        return store.getInt(uuid, "kit.must_choose", 0) == 1;
+    }
+
+    public void setKitChoiceRequired(UUID uuid, boolean required) {
+        if (uuid == null)
+            return;
+        store.setInt(uuid, "kit.must_choose", required ? 1 : 0);
+        store.save();
+    }
+
     // =========================
     // MINER
     // =========================

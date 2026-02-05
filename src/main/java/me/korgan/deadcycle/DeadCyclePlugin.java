@@ -34,6 +34,8 @@ public class DeadCyclePlugin extends JavaPlugin {
     private ZombieWaveManager zombie;
     private PhaseManager phase;
 
+    private DeathSpectatorManager deathSpectator;
+
     private RepairGUI repairGui;
     private BaseGUI baseGui;
     private BaseUpgradeGUI baseUpgradeGui;
@@ -67,6 +69,8 @@ public class DeadCyclePlugin extends JavaPlugin {
         zombie = new ZombieWaveManager(this);
         phase = new PhaseManager(this, siege);
 
+        deathSpectator = new DeathSpectatorManager(this);
+
         repairGui = new RepairGUI(this, blockHealth);
         baseGui = new BaseGUI(this);
         baseUpgradeGui = new BaseUpgradeGUI(this);
@@ -79,6 +83,8 @@ public class DeadCyclePlugin extends JavaPlugin {
         // listeners
         Bukkit.getPluginManager().registerEvents(new GameRulesController(this), this);
         Bukkit.getPluginManager().registerEvents(new PlayerRulesListener(this), this);
+        Bukkit.getPluginManager().registerEvents(deathSpectator, this);
+        Bukkit.getPluginManager().registerEvents(new TemporaryBlocksListener(this), this);
 
         Bukkit.getPluginManager().registerEvents(econ, this);
         Bukkit.getPluginManager().registerEvents(new MobSpawnController(this), this);
@@ -239,6 +245,10 @@ public class DeadCyclePlugin extends JavaPlugin {
 
     public PhaseManager phase() {
         return phase;
+    }
+
+    public DeathSpectatorManager deathSpectator() {
+        return deathSpectator;
     }
 
     public RepairGUI repairGui() {

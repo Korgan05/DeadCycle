@@ -95,6 +95,16 @@ public class BaseResourceManager {
         // веса как ты попросил
         if (m == Material.COBBLESTONE)
             return 5;
+        if (m == Material.ANDESITE)
+            return 5;
+        if (m == Material.GRANITE)
+            return 5;
+        if (m == Material.DIORITE)
+            return 5;
+        if (m == Material.GRAVEL)
+            return 5;
+        if (m == Material.FLINT)
+            return 5;
         if (m == Material.COAL)
             return 20;
         if (m == Material.IRON_INGOT)
@@ -106,6 +116,16 @@ public class BaseResourceManager {
 
     public ResourceType typeOf(Material m) {
         if (m == Material.COBBLESTONE)
+            return ResourceType.STONE;
+        if (m == Material.ANDESITE)
+            return ResourceType.STONE;
+        if (m == Material.GRANITE)
+            return ResourceType.STONE;
+        if (m == Material.DIORITE)
+            return ResourceType.STONE;
+        if (m == Material.GRAVEL)
+            return ResourceType.STONE;
+        if (m == Material.FLINT)
             return ResourceType.STONE;
         if (m == Material.COAL)
             return ResourceType.COAL;
