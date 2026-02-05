@@ -34,6 +34,8 @@ public class DeadCyclePlugin extends JavaPlugin {
     private ZombieWaveManager zombie;
     private PhaseManager phase;
 
+    private RegenMiningListener regenMining;
+
     private DeathSpectatorManager deathSpectator;
 
     private RepairGUI repairGui;
@@ -93,7 +95,8 @@ public class DeadCyclePlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new ResourceDepositListener(this), this);
 
         if (getConfig().getBoolean("regen_mining.enabled", true)) {
-            Bukkit.getPluginManager().registerEvents(new RegenMiningListener(this), this);
+            regenMining = new RegenMiningListener(this);
+            Bukkit.getPluginManager().registerEvents(regenMining, this);
         }
 
         Bukkit.getPluginManager().registerEvents(kit, this);
@@ -245,6 +248,10 @@ public class DeadCyclePlugin extends JavaPlugin {
 
     public PhaseManager phase() {
         return phase;
+    }
+
+    public RegenMiningListener regenMining() {
+        return regenMining;
     }
 
     public DeathSpectatorManager deathSpectator() {

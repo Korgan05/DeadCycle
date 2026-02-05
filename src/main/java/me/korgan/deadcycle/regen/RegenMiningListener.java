@@ -18,6 +18,7 @@ import org.bukkit.inventory.meta.Damageable;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.UUID;
 
 public class RegenMiningListener implements Listener {
@@ -45,6 +46,44 @@ public class RegenMiningListener implements Listener {
 
     private boolean isRegenCobble(Block b) {
         return regenCobble.containsKey(new Pos(b.getWorld().getUID(), b.getX(), b.getY(), b.getZ()));
+    }
+
+    /**
+     * По просьбе: на старте дня булыжники из регена должны "отрегениться"
+     * мгновенно.
+     * Если чанк выгружен — ставим restoreAtMillis=0, и он восстановится при
+     * следующей загрузке.
+     */
+    public void restoreAllNowAtDayStart() {
+        for (Pos pos : new java.util.ArrayList<>(regenCobble.keySet())) {
+            RegenEntry entry = regenCobble.get(pos);
+            if (entry == null)
+                continue;
+            regenCobble.put(pos, new RegenEntry(entry.original(), 0L));
+            tryRestore(pos);
+        }
+    }
+
+    private Material rollRandomRestoreMaterial() {
+        // Баланс (можно подкрутить позже):
+        // STONE 30%, GRAVEL 15%, GRANITE 15%, ANDESITE 15%, DIORITE 10%, COAL_ORE 10%,
+        // IRON_ORE 4%, DIAMOND_ORE 1%
+        int r = ThreadLocalRandom.current().nextInt(100);
+        if (r < 30)
+            return Material.STONE;
+        if (r < 45)
+            return Material.GRAVEL;
+        if (r < 60)
+            return Material.GRANITE;
+        if (r < 75)
+            return Material.ANDESITE;
+        if (r < 85)
+            return Material.DIORITE;
+        if (r < 95)
+            return Material.COAL_ORE;
+        if (r < 99)
+            return Material.IRON_ORE;
+        return Material.DIAMOND_ORE;
     }
 
     private boolean tryRestore(Pos pos) {
@@ -76,7 +115,18 @@ public class RegenMiningListener implements Listener {
             return false;
         }
 
-        b.setType(entry.original(), false);
+        // По просьбе: за границей базы реген становится рандомным.
+        // Трогаем только булыжник, который был создан нашей системой (regenCobble).
+        boolean outsideBase = true;
+        try {
+            if (plugin.base() != null && plugin.base().isEnabled()) {
+                outsideBase = !plugin.base().isOnBase(b.getLocation());
+            }
+        } catch (Throwable ignored) {
+        }
+
+        Material restore = outsideBase ? rollRandomRestoreMaterial() : entry.original();
+        b.setType(restore, false);
         regenCobble.remove(pos);
         return true;
     }

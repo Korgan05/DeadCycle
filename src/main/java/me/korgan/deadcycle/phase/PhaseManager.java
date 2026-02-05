@@ -125,6 +125,13 @@ public class PhaseManager {
             plugin.deathSpectator().reviveAllAtDayStart();
         } catch (Throwable ignored) {
         }
+
+        // По просьбе: булыжники регена мгновенно "отрегениваются" на старте дня.
+        try {
+            if (plugin.regenMining() != null)
+                plugin.regenMining().restoreAllNowAtDayStart();
+        } catch (Throwable ignored) {
+        }
     }
 
     private void switchToNight() {
