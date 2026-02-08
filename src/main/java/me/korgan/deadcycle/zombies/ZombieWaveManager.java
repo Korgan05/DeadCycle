@@ -71,6 +71,7 @@ public class ZombieWaveManager {
                 for (int i = 0; i < total; i++) {
                     Location loc = randomSpawnAroundBaseOutsideRadius(center);
                     if (loc == null) continue;
+                    if (plugin.bossDuel().isDuelActive() && plugin.bossDuel().isInsideDuelZone(loc, 8)) continue;
                     spawnZombieClean(loc, hp, dmg, follow, maxHealth, attackDmg, followRange);
                 }
                 return;
@@ -79,10 +80,12 @@ public class ZombieWaveManager {
             // иначе — вокруг игроков
             for (Player p : Bukkit.getOnlinePlayers()) {
                 if (!p.isOnline() || p.isDead()) continue;
+                if (plugin.bossDuel().isDuelActive() && plugin.bossDuel().isDuelPlayer(p.getUniqueId())) continue;
 
                 for (int i = 0; i < perPlayer; i++) {
                     Location loc = randomSpawnNearPlayer(p.getLocation());
                     if (loc == null) continue;
+                    if (plugin.bossDuel().isDuelActive() && plugin.bossDuel().isInsideDuelZone(loc, 8)) continue;
                     spawnZombieClean(loc, hp, dmg, follow, maxHealth, attackDmg, followRange);
                 }
             }

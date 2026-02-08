@@ -92,6 +92,8 @@ public class PhaseManager {
 
         plugin.zombie().stopNight();
         siege.stop();
+        if (plugin.bossDuel() != null)
+            plugin.bossDuel().forceEnd("phase_stop");
     }
 
     public void forcePhase(String phaseName) {
@@ -108,6 +110,8 @@ public class PhaseManager {
 
         plugin.zombie().stopNight();
         siege.stop();
+        if (plugin.bossDuel() != null)
+            plugin.bossDuel().forceEnd("night_end");
 
         if (first)
             dayCount = 1;
@@ -147,5 +151,8 @@ public class PhaseManager {
 
         // осада стартует, если условия соблюдены (start_day, кто-то на базе и т.д.)
         siege.onNightStart(dayCount);
+
+        if (plugin.bossDuel() != null)
+            plugin.bossDuel().trySpawnBoss(dayCount);
     }
 }

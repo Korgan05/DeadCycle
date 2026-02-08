@@ -4,10 +4,12 @@ import me.korgan.deadcycle.DeadCyclePlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.PlayerInventory;
@@ -134,5 +136,22 @@ public class PlayerRulesListener implements Listener {
         spawn.setZ(Math.floor(spawn.getZ()) + 0.5);
 
         return spawn;
+    }
+
+    // когда игрок ест гнилую плоть (выпадает с зомби) — выдаем опыт
+    @EventHandler
+    public void onPlayerConsume(PlayerItemConsumeEvent e) {
+        Player p = e.getPlayer();
+
+        // Проверяем, что это гнилая плоть
+        if (e.getItem().getType() != Material.ROTTEN_FLESH)
+            return;
+
+        // Выдаем опыт (работает для всех китов)
+        try {
+            int xp = plugin.getConfig().getInt("economy.rotten_flesh_xp", 5);
+            p.setLevel(p.getLevel() + xp);
+        } catch (Throwable ignored) {
+        }
     }
 }

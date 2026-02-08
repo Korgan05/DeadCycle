@@ -1,6 +1,7 @@
 package me.korgan.deadcycle;
 
 import me.korgan.deadcycle.base.*;
+import me.korgan.deadcycle.boss.BossDuelManager;
 import me.korgan.deadcycle.econ.*;
 import me.korgan.deadcycle.kit.*;
 import me.korgan.deadcycle.mobs.*;
@@ -28,11 +29,14 @@ public class DeadCyclePlugin extends JavaPlugin {
 
     private KitManager kit;
     private KitMenu kitMenu;
+    private SkillManager skills;
 
     private BlockHealthManager blockHealth;
     private SiegeManager siege;
     private ZombieWaveManager zombie;
     private PhaseManager phase;
+
+    private BossDuelManager bossDuel;
 
     private RegenMiningListener regenMining;
 
@@ -63,6 +67,7 @@ public class DeadCyclePlugin extends JavaPlugin {
 
         kit = new KitManager(this);
         kitMenu = new KitMenu(this);
+        skills = new SkillManager(this);
 
         blockHealth = new BlockHealthManager(this);
         blockHealth.startVisuals();
@@ -70,6 +75,8 @@ public class DeadCyclePlugin extends JavaPlugin {
         siege = new SiegeManager(this, blockHealth);
         zombie = new ZombieWaveManager(this);
         phase = new PhaseManager(this, siege);
+
+        bossDuel = new BossDuelManager(this);
 
         deathSpectator = new DeathSpectatorManager(this);
 
@@ -90,6 +97,7 @@ public class DeadCyclePlugin extends JavaPlugin {
 
         Bukkit.getPluginManager().registerEvents(econ, this);
         Bukkit.getPluginManager().registerEvents(new MobSpawnController(this), this);
+        Bukkit.getPluginManager().registerEvents(bossDuel, this);
 
         Bukkit.getPluginManager().registerEvents(new BaseBuildProtectionListener(this), this);
         Bukkit.getPluginManager().registerEvents(new ResourceDepositListener(this), this);
@@ -111,6 +119,8 @@ public class DeadCyclePlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(shopGui, this);
         Bukkit.getPluginManager().registerEvents(new BaseScrollListener(this), this);
         Bukkit.getPluginManager().registerEvents(new BuilderToolListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new SkillListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new SkillItemProtectionListener(this), this);
 
         // commands
         if (getCommand("dc") != null)
@@ -161,6 +171,9 @@ public class DeadCyclePlugin extends JavaPlugin {
             phase.stop();
         if (blockHealth != null)
             blockHealth.stopVisuals();
+
+        if (bossDuel != null)
+            bossDuel.forceEnd("plugin_disable");
 
         if (baseResources != null)
             baseResources.save();
@@ -246,6 +259,10 @@ public class DeadCyclePlugin extends JavaPlugin {
         return zombie;
     }
 
+    public BossDuelManager bossDuel() {
+        return bossDuel;
+    }
+
     public PhaseManager phase() {
         return phase;
     }
@@ -276,5 +293,9 @@ public class DeadCyclePlugin extends JavaPlugin {
 
     public ShopGUI shopGui() {
         return shopGui;
+    }
+
+    public SkillManager skills() {
+        return skills;
     }
 }

@@ -148,6 +148,19 @@ public class RegenMiningListener implements Listener {
             return;
         }
 
+        // запрет ломать землю/дерн по всему миру (для обычных игроков)
+        try {
+            org.bukkit.Material t = b.getType();
+            if (t == org.bukkit.Material.DIRT || t == org.bukkit.Material.GRASS_BLOCK) {
+                if (!p.hasPermission("deadcycle.admin")) {
+                    e.setCancelled(true);
+                    p.sendMessage("§cРазрушение земли и дерна запрещено на этом сервере.");
+                }
+                return;
+            }
+        } catch (Throwable ignored) {
+        }
+
         // НОВОЕ: запрет ломать булыжник, который появился из регена
         if (b.getType() == Material.COBBLESTONE && isRegenCobble(b)) {
             e.setCancelled(true);

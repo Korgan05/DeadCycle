@@ -13,6 +13,7 @@ import org.bukkit.potion.PotionEffectType;
 
 import java.util.UUID;
 
+@SuppressWarnings("deprecation")
 public class ProgressManager {
 
     private final DeadCyclePlugin plugin;
@@ -56,6 +57,42 @@ public class ProgressManager {
             return;
         store.setInt(uuid, "kit.must_choose", required ? 1 : 0);
         store.save();
+    }
+
+    // =========================
+    // PLAYER LEVEL (общий)
+    // =========================
+
+    public int getPlayerLevel(UUID uuid) {
+        return store.getInt(uuid, "player.level", 1);
+    }
+
+    public int getPlayerExp(UUID uuid) {
+        return store.getInt(uuid, "player.exp", 0);
+    }
+
+    public int getPlayerNeedExp(UUID uuid) {
+        int lvl = getPlayerLevel(uuid);
+        return calcNeed(lvl, "player_progress.level_xp_base", "player_progress.level_xp_add_per_level");
+    }
+
+    public void addPlayerExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getPlayerExp(uuid) + add;
+        int lvl = getPlayerLevel(uuid);
+        int need = getPlayerNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("player_progress.max_level", 50);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "player_progress.level_xp_base", "player_progress.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Уровень игрока повышен! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "player.level", lvl);
+        store.setInt(uuid, "player.exp", exp);
     }
 
     // =========================
@@ -208,6 +245,80 @@ public class ProgressManager {
     }
 
     // =========================
+    // ARCHER
+    // =========================
+    public int getArcherLevel(UUID uuid) {
+        return store.getInt(uuid, "archer.level", 1);
+    }
+
+    public int getArcherExp(UUID uuid) {
+        return store.getInt(uuid, "archer.exp", 0);
+    }
+
+    public int getArcherNeedExp(UUID uuid) {
+        int lvl = getArcherLevel(uuid);
+        return calcNeed(lvl, "kit_xp.archer.level_xp_base", "kit_xp.archer.level_xp_add_per_level");
+    }
+
+    public void addArcherExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getArcherExp(uuid) + add;
+        int lvl = getArcherLevel(uuid);
+        int need = getArcherNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.archer.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.archer.level_xp_base", "kit_xp.archer.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Лучник повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "archer.level", lvl);
+        store.setInt(uuid, "archer.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
+    // GRAVITATOR
+    // =========================
+    public int getGravitatorLevel(UUID uuid) {
+        return store.getInt(uuid, "gravitator.level", 1);
+    }
+
+    public int getGravitatorExp(UUID uuid) {
+        return store.getInt(uuid, "gravitator.exp", 0);
+    }
+
+    public int getGravitatorNeedExp(UUID uuid) {
+        int lvl = getGravitatorLevel(uuid);
+        return calcNeed(lvl, "kit_xp.gravitator.level_xp_base", "kit_xp.gravitator.level_xp_add_per_level");
+    }
+
+    public void addGravitatorExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getGravitatorExp(uuid) + add;
+        int lvl = getGravitatorLevel(uuid);
+        int need = getGravitatorNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.gravitator.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.gravitator.level_xp_base", "kit_xp.gravitator.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Гравитатор повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "gravitator.level", lvl);
+        store.setInt(uuid, "gravitator.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
     // GENERIC KIT access (для scoreboard/GUI)
     // =========================
 
@@ -220,6 +331,8 @@ public class ProgressManager {
             case FIGHTER -> getFighterLevel(uuid);
             case BUILDER -> getBuilderLevel(uuid);
             case BERSERK -> getBerserkLevel(uuid);
+            case ARCHER -> getArcherLevel(uuid);
+            case GRAVITATOR -> getGravitatorLevel(uuid);
             default -> 0;
         };
     }
@@ -232,6 +345,8 @@ public class ProgressManager {
             case FIGHTER -> getFighterExp(uuid);
             case BUILDER -> getBuilderExp(uuid);
             case BERSERK -> getBerserkExp(uuid);
+            case ARCHER -> getArcherExp(uuid);
+            case GRAVITATOR -> getGravitatorExp(uuid);
             default -> 0;
         };
     }
@@ -244,6 +359,8 @@ public class ProgressManager {
             case FIGHTER -> getFighterNeedExp(uuid);
             case BUILDER -> getBuilderNeedExp(uuid);
             case BERSERK -> getBerserkNeedExp(uuid);
+            case ARCHER -> getArcherNeedExp(uuid);
+            case GRAVITATOR -> getGravitatorNeedExp(uuid);
             default -> 0;
         };
     }
@@ -355,10 +472,8 @@ public class ProgressManager {
     }
 
     private PotionEffectType strengthType() {
-        // В новых версиях это "strength" (раньше в Bukkit встречалось как
-        // INCREASE_DAMAGE).
-        // Берём по key, чтобы не зависеть от наличия конкретного поля в API.
-        return PotionEffectType.getByKey(NamespacedKey.minecraft("strength"));
+        // Paper 1.21+ использует STRENGTH
+        return PotionEffectType.STRENGTH;
     }
 
     private Attribute maxHealthAttribute() {

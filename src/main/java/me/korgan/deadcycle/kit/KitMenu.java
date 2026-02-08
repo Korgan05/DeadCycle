@@ -17,6 +17,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.Arrays;
 
+@SuppressWarnings("deprecation")
 public class KitMenu implements Listener {
 
     private final DeadCyclePlugin plugin;
@@ -43,6 +44,11 @@ public class KitMenu implements Listener {
         inv.setItem(22, item(Material.BOW,
                 ChatColor.AQUA + "Лучник",
                 ChatColor.GRAY + "Дальний бой"));
+
+        inv.setItem(20, item(Material.ANVIL,
+                ChatColor.DARK_PURPLE + "Гравитатор",
+                ChatColor.GRAY + "Усиливает гравитацию",
+                ChatColor.GRAY + "Прижимает зомби к земле"));
 
         inv.setItem(24, item(Material.NETHERITE_AXE,
                 ChatColor.DARK_RED + "Берсерк",
@@ -114,6 +120,15 @@ public class KitMenu implements Listener {
             plugin.kit().giveKit(p, KitManager.Kit.ARCHER);
             plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
             p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.AQUA + "Лучник");
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
+            p.closeInventory();
+            return;
+        }
+
+        if (slot == 20) {
+            plugin.kit().giveKit(p, KitManager.Kit.GRAVITATOR);
+            plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
+            p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.DARK_PURPLE + "Гравитатор");
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
             p.closeInventory();
             return;

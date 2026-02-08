@@ -85,5 +85,19 @@ public class EconomyManager implements Listener {
             if (exp > 0)
                 plugin.progress().addBerserkExp(killer, exp);
         }
+
+        // XP лучнику за убийство
+        if (kit == KitManager.Kit.ARCHER) {
+            int exp = plugin.getConfig().getInt("kit_xp.archer.exp_per_zombie", 2);
+            if (exp > 0)
+                plugin.progress().addArcherExp(killer, exp);
+        }
+
+        // XP гравитатору за убийство
+        if (kit == KitManager.Kit.GRAVITATOR) {
+            int exp = plugin.getConfig().getInt("kit_xp.gravitator.exp_per_zombie", 2);
+            if (exp > 0)
+                plugin.progress().addGravitatorExp(killer, exp);
+        }
     }
 }

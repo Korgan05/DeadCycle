@@ -16,6 +16,7 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.*;
 
+@SuppressWarnings("deprecation")
 public class KitManager implements Listener {
 
     public enum Kit {
@@ -23,7 +24,8 @@ public class KitManager implements Listener {
         MINER,
         BUILDER,
         ARCHER,
-        BERSERK
+        BERSERK,
+        GRAVITATOR
     }
 
     private final DeadCyclePlugin plugin;
@@ -31,11 +33,23 @@ public class KitManager implements Listener {
 
     private final NamespacedKey builderRepairKey;
     private final NamespacedKey builderUpgradeKey;
+    private final NamespacedKey skillActivatorKey;
+    
+    // Отдельные ключи для каждого скилла
+    private final NamespacedKey archerRainSkillKey;
+    private final NamespacedKey gravityCrushSkillKey;
+    private final NamespacedKey levitationStrikeSkillKey;
 
     public KitManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
         this.builderRepairKey = new NamespacedKey(plugin, "builder_repair_tool");
         this.builderUpgradeKey = new NamespacedKey(plugin, "builder_wall_upgrade_tool");
+        this.skillActivatorKey = new NamespacedKey(plugin, "skill_activator");
+        
+        // Ключи для защиты предметов скиллов
+        this.archerRainSkillKey = new NamespacedKey(plugin, "skill_archer_rain");
+        this.gravityCrushSkillKey = new NamespacedKey(plugin, "skill_gravity_crush");
+        this.levitationStrikeSkillKey = new NamespacedKey(plugin, "skill_levitation_strike");
     }
 
     public Kit getKit(UUID id) {
@@ -97,6 +111,7 @@ public class KitManager implements Listener {
             case BUILDER -> giveBuilder(p);
             case ARCHER -> giveArcher(p);
             case BERSERK -> giveBerserk(p);
+            case GRAVITATOR -> giveGravitator(p);
         }
 
         // применяем эффекты/бафы кита сразу после выдачи
@@ -129,6 +144,20 @@ public class KitManager implements Listener {
         p.getInventory().addItem(new ItemStack(Material.ARROW, 32));
         p.getInventory().addItem(new ItemStack(Material.LEATHER_CHESTPLATE));
         p.getInventory().addItem(new ItemStack(Material.COOKED_BEEF, 12));
+
+        // ✅ Скилл активатор для лучника
+        p.getInventory().addItem(createArcherRainItem());
+    }
+
+    private void giveGravitator(Player p) {
+        p.getInventory().addItem(new ItemStack(Material.IRON_SWORD));
+        p.getInventory().addItem(new ItemStack(Material.SHIELD));
+        p.getInventory().addItem(new ItemStack(Material.IRON_BOOTS));
+        p.getInventory().addItem(new ItemStack(Material.COOKED_BEEF, 12));
+
+        // ✅ Оба скилла гравитатора
+        p.getInventory().addItem(createGravityCrushItem());
+        p.getInventory().addItem(createLevitationStrikeItem());
     }
 
     private void giveBuilder(Player p) {
@@ -190,5 +219,119 @@ public class KitManager implements Listener {
             return false;
         Byte v = it.getItemMeta().getPersistentDataContainer().get(builderUpgradeKey, PersistentDataType.BYTE);
         return v != null && v == (byte) 1;
+    }
+
+    // ====== skill activator ======
+
+    private ItemStack makeSkillActivatorItem(Material mat, String name, List<String> lore) {
+        ItemStack it = new ItemStack(mat);
+        ItemMeta im = it.getItemMeta();
+        if (im != null) {
+            im.setDisplayName(name);
+            im.setLore(lore);
+
+            // ✅ Добавляем эффект "зачерованности" (enchantment glint)
+            // без реальной чары - только визуальный эффект
+            im.setEnchantmentGlintOverride(true);
+
+            im.getPersistentDataContainer().set(skillActivatorKey, PersistentDataType.BYTE, (byte) 1);
+            it.setItemMeta(im);
+        }
+        return it;
+    }
+
+    public boolean isSkillActivator(ItemStack it) {
+        if (it == null)
+            return false;
+        if (!it.hasItemMeta())
+            return false;
+        Byte v = it.getItemMeta().getPersistentDataContainer().get(skillActivatorKey, PersistentDataType.BYTE);
+        return v != null && v == (byte) 1;
+    }
+
+    /**
+     * Получить ID скилла по предмету.
+     * Возвращает null если это не скилл-предмет.
+     */
+    public String getSkillIdFromItem(ItemStack it) {
+        if (it == null || !it.hasItemMeta())
+            return null;
+
+        ItemMeta meta = it.getItemMeta();
+        
+        Byte archerRain = meta.getPersistentDataContainer().get(archerRainSkillKey, PersistentDataType.BYTE);
+        if (archerRain != null && archerRain == (byte) 1)
+            return "archer_rain";
+
+        Byte gravityCrush = meta.getPersistentDataContainer().get(gravityCrushSkillKey, PersistentDataType.BYTE);
+        if (gravityCrush != null && gravityCrush == (byte) 1)
+            return "gravity_crush";
+
+        Byte levitationStrike = meta.getPersistentDataContainer().get(levitationStrikeSkillKey, PersistentDataType.BYTE);
+        if (levitationStrike != null && levitationStrike == (byte) 1)
+            return "levitation_strike";
+
+        return null;
+    }
+
+    /**
+     * Создать предмет для Archer Rain скилла.
+     */
+    public ItemStack createArcherRainItem() {
+        ItemStack it = new ItemStack(Material.ARROW);
+        ItemMeta im = it.getItemMeta();
+        if (im != null) {
+            im.setDisplayName("§6Стрельный разряд");
+            im.setLore(Arrays.asList("§7Зажми ПКМ для активации", "§7Стрелы упадут куда ты смотришь"));
+            im.setEnchantmentGlintOverride(true);
+            
+            im.getPersistentDataContainer().set(archerRainSkillKey, PersistentDataType.BYTE, (byte) 1);
+            im.getPersistentDataContainer().set(skillActivatorKey, PersistentDataType.BYTE, (byte) 1);
+            it.setItemMeta(im);
+        }
+        return it;
+    }
+
+    /**
+     * Создать предмет для Gravity Crush скилла.
+     */
+    public ItemStack createGravityCrushItem() {
+        ItemStack it = new ItemStack(Material.AMETHYST_SHARD);
+        ItemMeta im = it.getItemMeta();
+        if (im != null) {
+            im.setDisplayName("§5Гравитационный пресс");
+            im.setLore(Arrays.asList("§7Зажми ПКМ для активации", "§7Прижимает зомби к земле"));
+            im.setEnchantmentGlintOverride(true);
+            
+            im.getPersistentDataContainer().set(gravityCrushSkillKey, PersistentDataType.BYTE, (byte) 1);
+            im.getPersistentDataContainer().set(skillActivatorKey, PersistentDataType.BYTE, (byte) 1);
+            it.setItemMeta(im);
+        }
+        return it;
+    }
+
+    /**
+     * Создать предмет для Levitation Strike скилла.
+     */
+    public ItemStack createLevitationStrikeItem() {
+        ItemStack it = new ItemStack(Material.CHORUS_FRUIT);
+        ItemMeta im = it.getItemMeta();
+        if (im != null) {
+            im.setDisplayName("§dАнтигравитация");
+            im.setLore(Arrays.asList("§7Зажми ПКМ для активации", "§7Отправляет зомби вверх"));
+            im.setEnchantmentGlintOverride(true);
+            
+            im.getPersistentDataContainer().set(levitationStrikeSkillKey, PersistentDataType.BYTE, (byte) 1);
+            im.getPersistentDataContainer().set(skillActivatorKey, PersistentDataType.BYTE, (byte) 1);
+            it.setItemMeta(im);
+        }
+        return it;
+    }
+
+    /**
+     * Проверить, является ли предмет защищённым предметом скилла.
+     */
+    public boolean isProtectedSkillItem(ItemStack it) {
+        return getSkillIdFromItem(it) != null;
     }
 }

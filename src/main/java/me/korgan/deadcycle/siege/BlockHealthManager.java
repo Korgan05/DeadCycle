@@ -44,7 +44,11 @@ public class BlockHealthManager {
     public void startVisuals() {
         stopVisuals();
 
-        long periodTicks = 8L; // часто, чтобы искры выглядели живыми
+        // ✅ Оптимизация: увеличиваем период и ограничиваем дальность
+        long periodTicks = 16L; // Было 8L, теперь 16L (меньше кадров, но все равно гладко)
+        final int maxParticlesPerType = 40; // Показываем только 40 ближайших сломанных
+        final double viewDistance = 40.0; // Расстояние видимости для частиц
+
         particleTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!plugin.base().isEnabled())
                 return;
@@ -56,54 +60,65 @@ public class BlockHealthManager {
             Location center = plugin.base().getCenter();
             int radius = plugin.base().getRadius();
 
-            boolean someoneNear = false;
+            // Ищем ближайшего игрока к базе
+            Player nearestPlayer = null;
+            double nearestDist = Double.MAX_VALUE;
             for (Player p : Bukkit.getOnlinePlayers()) {
                 if (!p.getWorld().equals(w))
                     continue;
-                if (p.getLocation().distanceSquared(center) <= (radius + 10.0) * (radius + 10.0)) {
-                    someoneNear = true;
-                    break;
+                double d = p.getLocation().distanceSquared(center);
+                if (d <= (radius + 15.0) * (radius + 15.0) && d < nearestDist) {
+                    nearestDist = d;
+                    nearestPlayer = p;
                 }
             }
-            if (!someoneNear)
+            if (nearestPlayer == null)
                 return;
 
-            // 1) сломанные = красные искры
-            for (Map.Entry<BlockPos, Material> e : broken.entrySet()) {
-                BlockPos pos = e.getKey();
-                Location at = pos.toLocation(w).add(0.5, 0.85, 0.5);
+            Location playerLoc = nearestPlayer.getLocation();
+            double viewDist2 = viewDistance * viewDistance;
 
+            // 1) сломанные = красные искры (ограничиваем дальность и количество)
+            List<BlockPos> brokenList = broken.keySet().stream()
+                    .filter(pos -> pos.distanceSquared(playerLoc) <= viewDist2)
+                    .sorted(Comparator.comparingDouble(pos -> pos.distanceSquared(playerLoc)))
+                    .limit(maxParticlesPerType)
+                    .toList();
+
+            for (BlockPos pos : brokenList) {
+                Location at = pos.toLocation(w).add(0.5, 0.85, 0.5);
                 w.spawnParticle(
                         Particle.DUST, at,
-                        8,
+                        5, // Было 8, теперь 5
                         0.15, 0.25, 0.15,
                         0,
                         new Particle.DustOptions(Color.RED, 1.55f));
             }
 
-            // 2) поврежденные = оранжевые искры
-            for (Map.Entry<BlockPos, Integer> e : hp.entrySet()) {
-                BlockPos pos = e.getKey();
-                if (broken.containsKey(pos))
-                    continue; // если уже сломан — красный приоритет
+            // 2) поврежденные = оранжевые искры (ограничиваем дальность и количество)
+            List<Map.Entry<BlockPos, Integer>> damagedList = hp.entrySet().stream()
+                    .filter(e -> !broken.containsKey(e.getKey()))
+                    .filter(e -> {
+                        int cur = e.getValue();
+                        int max = getMaxHp(w.getBlockAt(e.getKey().x, e.getKey().y, e.getKey().z).getType());
+                        return max > 0 && cur < max;
+                    })
+                    .filter(e -> e.getKey().distanceSquared(playerLoc) <= viewDist2)
+                    .sorted(Comparator.comparingDouble(e -> e.getKey().distanceSquared(playerLoc)))
+                    .limit(maxParticlesPerType)
+                    .toList();
 
-                int cur = e.getValue();
-                int max = getMaxHp(pos.toLocation(w).getBlock().getType());
-                if (max <= 0)
-                    continue;
-                if (cur >= max)
-                    continue; // полностью целый
-
-                Location at = pos.toLocation(w).add(0.5, 0.85, 0.5);
+            for (Map.Entry<BlockPos, Integer> e : damagedList) {
+                Location at = e.getKey().toLocation(w).add(0.5, 0.85, 0.5);
                 w.spawnParticle(
                         Particle.DUST, at,
-                        5,
+                        3, // Было 5, теперь 3
                         0.15, 0.22, 0.15,
                         0,
                         new Particle.DustOptions(Color.ORANGE, 1.25f));
             }
 
-            // 3) чинящиеся = белые искры
+            // 3) чинящиеся = белые искры (ограничиваем дальность)
             long now = System.currentTimeMillis();
             Iterator<Map.Entry<BlockPos, Long>> it = repairingUntil.entrySet().iterator();
             while (it.hasNext()) {
@@ -114,11 +129,14 @@ public class BlockHealthManager {
                 }
 
                 BlockPos pos = e.getKey();
-                Location at = pos.toLocation(w).add(0.5, 0.85, 0.5);
+                if (pos.distanceSquared(playerLoc) > viewDist2) {
+                    continue; // Слишком далеко — не показываем
+                }
 
+                Location at = pos.toLocation(w).add(0.5, 0.85, 0.5);
                 w.spawnParticle(
                         Particle.DUST, at,
-                        4,
+                        2, // Было 4, теперь 2
                         0.12, 0.18, 0.12,
                         0,
                         new Particle.DustOptions(Color.WHITE, 1.10f));
