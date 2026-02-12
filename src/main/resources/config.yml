@@ -341,3 +341,43 @@ skills:
       levitation_amplifier: 2
       levitation_duration_ticks: 60
 
+# Gates system
+gates:
+  enabled: true
+  # cooldown in seconds between manual toggles per player
+  toggle_cooldown_seconds: 5
+  # how far from the clicked sign to search for a gate (blocks)
+  sign_search_radius: 6
+
+# ⚡ Настройки системы маны (XP)
+mana:
+  # Начальный максимум маны для новых игроков
+  initial_max: 100
+  # Скорость регенерации рассчитывается автоматически: max_xp / 1000 в сек
+  # Например: 100 мaks = 0.1 в сек, 200 макс = 0.2 в сек, 300 макс = 0.3 в сек
+  # Насколько увеличивается максимум маны при каждом использовании скилла
+  max_increase_per_use: 0.5
+
+# ⭐ Особые скиллы (не привязаны к китам)
+special_skills:
+  regen_item:
+    # Сколько урона нужно получить для получения предмета
+    damage_taken_to_unlock: 1000
+    # Сколько маны тратится в секунду при регенерации
+    mana_per_second: 1.0
+
+  auto_regen:
+    # Сколько нужно вылечить здоровья с предметом регенерации
+    heal_to_unlock: 500
+    # Сколько маны тратится в секунду при авторегене
+    mana_per_second: 0.5
+
+  auto_dodge:
+    # Условия получения
+    damage_taken: 100
+    damage_dealt: 100
+    # Шанс уклонения (0.25 = 25%)
+    dodge_chance: 0.25
+    # Стоимость маны за успешное уклонение
+    mana_cost: 5
+

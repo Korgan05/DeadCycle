@@ -7,6 +7,7 @@ import org.bukkit.World;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
+import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
 public class PhaseManager {
@@ -105,6 +106,58 @@ public class PhaseManager {
             switchToNight();
     }
 
+    public void setDayCount(int dayNum) {
+        dayCount = Math.max(1, dayNum);
+    }
+
+    public void reset() {
+        // Полный сброс сохранений и переход на День 1
+
+        // Помечаем что сейчас будет полный рестарт - скиллы НЕ будут выдаваться при
+        // возрождении
+        if (plugin.deathSpectator() != null) {
+            plugin.deathSpectator().setFullGameResetFlag(true);
+        }
+
+        // 1. СНАЧАЛА очищаем все данные в players.yml (уровни китов, опыт, мана и т.д.)
+        if (plugin.playerData() != null)
+            plugin.playerData().clearAll();
+
+        // 2. Очищаем экономику (деньги)
+        if (plugin.econ() != null)
+            plugin.econ().clearAll();
+
+        // 3. Сбрасываем специальные навыки (авто-хил, авто-реген, уклонение)
+        if (plugin.specialSkills() != null)
+            plugin.specialSkills().resetAll();
+
+        // 4. Сбрасываем ману (очищаем кеш после очистки playerData)
+        if (plugin.mana() != null)
+            plugin.mana().resetAll();
+
+        // 5. Сбрасываем прогресс китов (уровни и опыт)
+        if (plugin.progress() != null)
+            plugin.progress().resetAll();
+
+        // 6. Сбрасываем ресурсы базы
+        if (plugin.baseResources() != null)
+            plugin.baseResources().resetAll();
+
+        // 7. Сбрасываем уровни улучшений в config.yml
+        plugin.getConfig().set("base.wall_level", 1);
+        plugin.getConfig().set("upgrades.wall.level", 0);
+        plugin.getConfig().set("upgrades.repair.level", 0);
+        plugin.saveConfig();
+
+        // 8. Возвращаемся на День 1
+        dayCount = 0;
+        switchToDay(true);
+
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            p.sendMessage("§c[ИГРА] Все игроки умерли. Игра перезагружена до Дня 1!");
+        }
+    }
+
     private void switchToDay(boolean first) {
         phase = Phase.DAY;
 
@@ -124,6 +177,14 @@ public class PhaseManager {
             w.setTime(1000);
         bar.setColor(BarColor.GREEN);
 
+        // Удаляем свитки призыва у всех игроков при наступлении дня
+        try {
+            if (plugin.getBossHelpScrollListener() != null) {
+                plugin.getBossHelpScrollListener().removeAllScrollsFromPlayers();
+            }
+        } catch (Throwable ignored) {
+        }
+
         // Респавним игроков, которые умерли ночью и были в spectator.
         try {
             plugin.deathSpectator().reviveAllAtDayStart();
@@ -136,12 +197,24 @@ public class PhaseManager {
                 plugin.regenMining().restoreAllNowAtDayStart();
         } catch (Throwable ignored) {
         }
+
+        // Открываем ворота при наступлении дня
+        try {
+            if (plugin.gates() != null)
+                plugin.gates().onDayStart();
+        } catch (Throwable ignored) {
+        }
     }
 
     private void switchToNight() {
         phase = Phase.NIGHT;
 
-        secondsLeft = plugin.getConfig().getInt("phase.night_seconds", 300);
+        // С 10 дня - ночь 1000 секунд если босс спавнится, иначе 300
+        int nightDuration = plugin.getConfig().getInt("phase.night_seconds", 300);
+        if (dayCount >= 10) {
+            nightDuration = 1000;
+        }
+        secondsLeft = nightDuration;
 
         for (World w : Bukkit.getWorlds())
             w.setTime(13000);
@@ -152,7 +225,21 @@ public class PhaseManager {
         // осада стартует, если условия соблюдены (start_day, кто-то на базе и т.д.)
         siege.onNightStart(dayCount);
 
+        // Закрываем ворота на ночь
+        try {
+            if (plugin.gates() != null)
+                plugin.gates().onNightStart();
+        } catch (Throwable ignored) {
+        }
+
         if (plugin.bossDuel() != null)
             plugin.bossDuel().trySpawnBoss(dayCount);
+    }
+
+    public void endNightEarly() {
+        // Преждевременное завершение ночи (смерть босса или всех игроков)
+        if (phase != Phase.NIGHT)
+            return;
+        switchToDay(false);
     }
 }
