@@ -341,14 +341,6 @@ skills:
       levitation_amplifier: 2
       levitation_duration_ticks: 60
 
-# Gates system
-gates:
-  enabled: true
-  # cooldown in seconds between manual toggles per player
-  toggle_cooldown_seconds: 5
-  # how far from the clicked sign to search for a gate (blocks)
-  sign_search_radius: 6
-
 # ⚡ Настройки системы маны (XP)
 mana:
   # Начальный максимум маны для новых игроков
@@ -360,17 +352,24 @@ mana:
 
 # ⭐ Особые скиллы (не привязаны к китам)
 special_skills:
+  # Кулдаун антиспама сообщения о нулевой мане (в миллисекундах)
+  out_of_mana_message_cooldown_ms: 2500
+
   regen_item:
     # Сколько урона нужно получить для получения предмета
     damage_taken_to_unlock: 1000
     # Сколько маны тратится в секунду при регенерации
     mana_per_second: 1.0
+    # Сила эффекта регенерации (0=I, 1=II, 2=III...)
+    potion_amplifier: 1
 
   auto_regen:
     # Сколько нужно вылечить здоровья с предметом регенерации
     heal_to_unlock: 500
     # Сколько маны тратится в секунду при авторегене
     mana_per_second: 0.5
+    # Сила пассивной регенерации (0=I, 1=II...)
+    potion_amplifier: 0
 
   auto_dodge:
     # Условия получения
@@ -380,4 +379,22 @@ special_skills:
     dodge_chance: 0.25
     # Стоимость маны за успешное уклонение
     mana_cost: 5
+
+# 🤖 Мобильность босса в дуэли
+boss:
+  mobility:
+    # Кд между рывками босса (в тиках)
+    dash_cooldown_ticks: 60
+    # Задержка-телеграф перед рывком (в тиках)
+    dash_windup_ticks: 8
+    # Скорость скользящего рывка по земле
+    dash_speed: 1.3
+
+    # Скольжение при уклонении босса
+    dodge_speed_min: 0.9
+    dodge_speed_max: 1.4
+
+    # Скольжение при отступе босса
+    backstep_speed_min: 0.8
+    backstep_speed_max: 1.2
 
