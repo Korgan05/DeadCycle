@@ -7,7 +7,7 @@ author: Korgan
 commands:
   dc:
     description: DeadCycle admin/main command
-    usage: /dc <start|stop|setphase|reload|setbase|kitlvl|boss|stat|setstat>
+    usage: /dc <start|stop|setphase|reload|setbase|kitlvl|boss|stat|setstat|anime>
 
   shop:
     description: Open DeadCycle shop

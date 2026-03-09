@@ -7,11 +7,14 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.entity.Projectile;
 import org.bukkit.inventory.PlayerInventory;
 
 public class PlayerRulesListener implements Listener {
@@ -153,5 +156,26 @@ public class PlayerRulesListener implements Listener {
             p.setLevel(p.getLevel() + xp);
         } catch (Throwable ignored) {
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPlayerVsPlayerDamage(EntityDamageByEntityEvent e) {
+        if (!(e.getEntity() instanceof Player victim))
+            return;
+
+        Player attacker = null;
+        if (e.getDamager() instanceof Player p) {
+            attacker = p;
+        } else if (e.getDamager() instanceof Projectile projectile
+                && projectile.getShooter() instanceof Player p) {
+            attacker = p;
+        }
+
+        if (attacker == null)
+            return;
+        if (attacker.getUniqueId().equals(victim.getUniqueId()))
+            return;
+
+        e.setCancelled(true);
     }
 }

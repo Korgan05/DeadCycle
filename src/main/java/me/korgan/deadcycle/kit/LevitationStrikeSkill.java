@@ -1,6 +1,7 @@
 package me.korgan.deadcycle.kit;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
@@ -21,6 +22,10 @@ import java.util.List;
  * Стоимость: опыт (XP), если нет - HP.
  */
 public class LevitationStrikeSkill implements Skill {
+
+    private static final Color ANTIGRAVITY_LINE_COLOR = Color.fromRGB(180, 80, 255);
+    private static final double UPWARD_FORCE_PER_LEVEL = 0.08;
+    private static final double GOLDEN_ANGLE = 2.399963229728653;
 
     private final DeadCyclePlugin plugin;
     private final SkillManager skillManager;
@@ -68,7 +73,7 @@ public class LevitationStrikeSkill implements Skill {
     }
 
     @Override
-    public int getXpCost(Player p) {
+    public double getManaCost(Player p) {
         return xpCost;
     }
 
@@ -83,7 +88,8 @@ public class LevitationStrikeSkill implements Skill {
             return false;
 
         // Можно использовать если есть опыт ИЛИ есть достаточно HP
-        boolean hasXp = p.getLevel() >= xpCost;
+        int manaCost = (int) getManaCost(p);
+        boolean hasXp = p.getLevel() >= manaCost;
         boolean hasHp = p.getHealth() > hpCost;
         return hasXp || hasHp;
     }
@@ -92,7 +98,8 @@ public class LevitationStrikeSkill implements Skill {
     public String getErrorMessage(Player p) {
         if (p == null || !p.isOnline())
             return "§cОшибка: игрок не в сети";
-        boolean hasXp = p.getLevel() >= xpCost;
+        int manaCost = (int) getManaCost(p);
+        boolean hasXp = p.getLevel() >= manaCost;
         boolean hasHp = p.getHealth() > hpCost;
         if (!hasXp && !hasHp)
             return "§cНедостаточно опыта или HP!";
@@ -104,12 +111,18 @@ public class LevitationStrikeSkill implements Skill {
         if (p == null || !p.isOnline())
             return;
 
+        // Notifies boss that this skill is being used (for adaptation/counters)
+        if (plugin.bossDuel() != null) {
+            plugin.bossDuel().registerSkillUsage(p, "levitation_strike");
+        }
+
         World world = p.getWorld();
         Location center = p.getLocation();
 
         int level = plugin.progress().getGravitatorLevel(p.getUniqueId());
         double radius = radiusBase + (radiusPerLevel * level);
         double damage = damageBase + (damagePerLevel * level);
+        double levelUpwardForce = upwardForce + (UPWARD_FORCE_PER_LEVEL * level);
 
         // Звуковой эффект
         world.playSound(center, Sound.ENTITY_WITHER_SPAWN, 1.0f, 1.2f);
@@ -117,6 +130,7 @@ public class LevitationStrikeSkill implements Skill {
         // Визуальный круг радиуса поражения (фиолетовые частицы)
         spawnRadiusRing(world, center, radius);
         spawnRadiusRing(world, center, radius);
+        startLiftAnimation(world, center, radius, level);
 
         // Собираем цели
         List<Zombie> targets = new ArrayList<>();
@@ -130,7 +144,7 @@ public class LevitationStrikeSkill implements Skill {
 
             // Отправляем зомби вверх
             Vector velocity = z.getVelocity().clone();
-            velocity.setY(upwardForce);
+            velocity.setY(levelUpwardForce);
             z.setVelocity(velocity);
 
             // Наносим урон
@@ -163,6 +177,69 @@ public class LevitationStrikeSkill implements Skill {
             world.spawnParticle(Particle.ENCHANT, loc, 3, 0.1, 0.1, 0.1, 0.02);
             world.spawnParticle(Particle.REVERSE_PORTAL, loc, 2, 0.05, 0.02, 0.05, 0.01);
         }
+    }
+
+    private void startLiftAnimation(World world, Location center, double radius, int level) {
+        int normalizedLevel = Math.max(0, level);
+        int totalFrames = 8 + Math.min(10, normalizedLevel / 2);
+
+        new org.bukkit.scheduler.BukkitRunnable() {
+            int frame = 0;
+
+            @Override
+            public void run() {
+                if (frame >= totalFrames) {
+                    cancel();
+                    return;
+                }
+
+                spawnLiftLinesFrame(world, center, radius, normalizedLevel, frame);
+                frame++;
+            }
+        }.runTaskTimer(plugin, 0L, 1L);
+    }
+
+    private void spawnLiftLinesFrame(World world, Location center, double radius, int level, int animationTick) {
+        int lineCount = Math.min(84, 6 + level * 3 + (int) Math.round(radius * 1.1));
+        double zoneRadius = Math.max(0.85, radius * 0.88);
+        double baseLineHeight = 1.0 + (level * 0.14);
+        double speed = Math.min(0.78, 0.26 + (level * 0.018));
+        double phase = animationTick * speed;
+
+        for (int i = 0; i < lineCount; i++) {
+            double seed = i * 0.6180339887498949;
+            double angle = (i * GOLDEN_ANGLE + animationTick * 0.09) % (Math.PI * 2.0);
+            double distance = zoneRadius * Math.sqrt((i + 0.5) / lineCount);
+            double x = Math.cos(angle) * distance;
+            double z = Math.sin(angle) * distance;
+
+            double baseY = -0.08 + (fract(seed * 9.0) * 0.95);
+            double lineHeight = baseLineHeight * (0.72 + (fract(seed * 5.0) * 0.75));
+            double progress = fract(seed + phase);
+            double headY = baseY + lineHeight * progress;
+
+            Particle.DustOptions dust = createLiftDust(level, seed);
+            for (int trail = 0; trail < 4; trail++) {
+                double y = headY - (trail * 0.12);
+                if (y < baseY - 0.05)
+                    break;
+
+                Location point = center.clone().add(x, y, z);
+                world.spawnParticle(Particle.DUST, point, 1, 0.008, 0.01, 0.008, 0.0, dust);
+            }
+        }
+    }
+
+    private Particle.DustOptions createLiftDust(int level, double seed) {
+        float minSize = 0.18f;
+        float maxSize = (float) Math.min(0.52, 0.34 + (level * 0.012));
+        float ratio = (float) fract(seed * 13.0);
+        float size = minSize + ((maxSize - minSize) * ratio);
+        return new Particle.DustOptions(ANTIGRAVITY_LINE_COLOR, size);
+    }
+
+    private double fract(double value) {
+        return value - Math.floor(value);
     }
 
     @Override

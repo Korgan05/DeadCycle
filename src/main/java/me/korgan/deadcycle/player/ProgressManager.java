@@ -319,6 +319,120 @@ public class ProgressManager {
     }
 
     // =========================
+    // DUELIST
+    // =========================
+    public int getDuelistLevel(UUID uuid) {
+        return store.getInt(uuid, "duelist.level", 1);
+    }
+
+    public int getDuelistExp(UUID uuid) {
+        return store.getInt(uuid, "duelist.exp", 0);
+    }
+
+    public int getDuelistNeedExp(UUID uuid) {
+        int lvl = getDuelistLevel(uuid);
+        return calcNeed(lvl, "kit_xp.duelist.level_xp_base", "kit_xp.duelist.level_xp_add_per_level");
+    }
+
+    public void addDuelistExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getDuelistExp(uuid) + add;
+        int lvl = getDuelistLevel(uuid);
+        int need = getDuelistNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.duelist.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.duelist.level_xp_base", "kit_xp.duelist.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Ритуалист повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "duelist.level", lvl);
+        store.setInt(uuid, "duelist.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
+    // CLONER
+    // =========================
+    public int getClonerLevel(UUID uuid) {
+        return store.getInt(uuid, "cloner.level", 1);
+    }
+
+    public int getClonerExp(UUID uuid) {
+        return store.getInt(uuid, "cloner.exp", 0);
+    }
+
+    public int getClonerNeedExp(UUID uuid) {
+        int lvl = getClonerLevel(uuid);
+        return calcNeed(lvl, "kit_xp.cloner.level_xp_base", "kit_xp.cloner.level_xp_add_per_level");
+    }
+
+    public void addClonerExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getClonerExp(uuid) + add;
+        int lvl = getClonerLevel(uuid);
+        int need = getClonerNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.cloner.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.cloner.level_xp_base", "kit_xp.cloner.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Клонер повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "cloner.level", lvl);
+        store.setInt(uuid, "cloner.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
+    // SUMMONER
+    // =========================
+    public int getSummonerLevel(UUID uuid) {
+        return store.getInt(uuid, "summoner.level", 1);
+    }
+
+    public int getSummonerExp(UUID uuid) {
+        return store.getInt(uuid, "summoner.exp", 0);
+    }
+
+    public int getSummonerNeedExp(UUID uuid) {
+        int lvl = getSummonerLevel(uuid);
+        return calcNeed(lvl, "kit_xp.summoner.level_xp_base", "kit_xp.summoner.level_xp_add_per_level");
+    }
+
+    public void addSummonerExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getSummonerExp(uuid) + add;
+        int lvl = getSummonerLevel(uuid);
+        int need = getSummonerNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.summoner.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.summoner.level_xp_base", "kit_xp.summoner.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Призыватель повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "summoner.level", lvl);
+        store.setInt(uuid, "summoner.exp", exp);
+
+        applyKitEffects(p);
+        if (plugin.summonerKit() != null && plugin.kit().getKit(uuid) == KitManager.Kit.SUMMONER) {
+            plugin.summonerKit().syncSkillItems(p);
+        }
+    }
+
+    // =========================
     // GENERIC KIT access (для scoreboard/GUI)
     // =========================
 
@@ -333,6 +447,9 @@ public class ProgressManager {
             case BERSERK -> getBerserkLevel(uuid);
             case ARCHER -> getArcherLevel(uuid);
             case GRAVITATOR -> getGravitatorLevel(uuid);
+            case DUELIST -> getDuelistLevel(uuid);
+            case CLONER -> getClonerLevel(uuid);
+            case SUMMONER -> getSummonerLevel(uuid);
             default -> 0;
         };
     }
@@ -347,6 +464,9 @@ public class ProgressManager {
             case BERSERK -> getBerserkExp(uuid);
             case ARCHER -> getArcherExp(uuid);
             case GRAVITATOR -> getGravitatorExp(uuid);
+            case DUELIST -> getDuelistExp(uuid);
+            case CLONER -> getClonerExp(uuid);
+            case SUMMONER -> getSummonerExp(uuid);
             default -> 0;
         };
     }
@@ -361,6 +481,9 @@ public class ProgressManager {
             case BERSERK -> getBerserkNeedExp(uuid);
             case ARCHER -> getArcherNeedExp(uuid);
             case GRAVITATOR -> getGravitatorNeedExp(uuid);
+            case DUELIST -> getDuelistNeedExp(uuid);
+            case CLONER -> getClonerNeedExp(uuid);
+            case SUMMONER -> getSummonerNeedExp(uuid);
             default -> 0;
         };
     }
@@ -378,9 +501,33 @@ public class ProgressManager {
         return getKitNeedExp(p.getUniqueId(), kit);
     }
 
-    // =========================
-    // helpers
-    // =========================
+    public void setKitLevel(UUID uuid, KitManager.Kit kit, int level) {
+        if (kit == null || uuid == null)
+            return;
+        int lvl = Math.max(1, level);
+        switch (kit) {
+            case MINER -> store.setInt(uuid, "miner.level", lvl);
+            case FIGHTER -> store.setInt(uuid, "fighter.level", lvl);
+            case BUILDER -> store.setInt(uuid, "builder.level", lvl);
+            case BERSERK -> store.setInt(uuid, "berserk.level", lvl);
+            case ARCHER -> store.setInt(uuid, "archer.level", lvl);
+            case GRAVITATOR -> store.setInt(uuid, "gravitator.level", lvl);
+            case DUELIST -> store.setInt(uuid, "duelist.level", lvl);
+            case CLONER -> store.setInt(uuid, "cloner.level", lvl);
+            case SUMMONER -> store.setInt(uuid, "summoner.level", lvl);
+        }
+        store.save();
+
+        if (kit == KitManager.Kit.SUMMONER && plugin.summonerKit() != null) {
+            Player online = org.bukkit.Bukkit.getPlayer(uuid);
+            if (online != null && online.isOnline()) {
+                plugin.summonerKit().syncSkillItems(online);
+            }
+        }
+    }// =========================
+     // helpers
+     // =========================
+
     private int calcNeed(int lvl, String basePath, String addPath) {
         int base = plugin.getConfig().getInt(basePath, 80);
         int add = plugin.getConfig().getInt(addPath, 40);
@@ -482,5 +629,52 @@ public class ProgressManager {
         if (a != null)
             return a;
         return Registry.ATTRIBUTE.get(NamespacedKey.minecraft("generic_max_health"));
+    }
+
+    /**
+     * Полный сброс прогресса всех китов (уровни и опыт) для всех игроков.
+     * Вызывается при ресете игры (когда все игроки умирают).
+     */
+    public void resetAll() {
+        // Очищаем все данные китов в PlayerDataStore
+        // Данные хранятся как: UUID.miner.level, UUID.fighter.exp и т.д.
+        // PlayerDataStore.clearAll() уже вызывается в PhaseManager.reset(),
+        // поэтому здесь просто обнуляем для онлайн-игроков на случай если они уже
+        // загружены
+
+        for (Player p : org.bukkit.Bukkit.getOnlinePlayers()) {
+            UUID uuid = p.getUniqueId();
+
+            // Сбрасываем все уровни китов до 1
+            store.setInt(uuid, "miner.level", 1);
+            store.setInt(uuid, "fighter.level", 1);
+            store.setInt(uuid, "builder.level", 1);
+            store.setInt(uuid, "berserk.level", 1);
+            store.setInt(uuid, "archer.level", 1);
+            store.setInt(uuid, "gravitator.level", 1);
+            store.setInt(uuid, "duelist.level", 1);
+            store.setInt(uuid, "cloner.level", 1);
+            store.setInt(uuid, "summoner.level", 1);
+
+            // Сбрасываем весь опыт до 0
+            store.setInt(uuid, "miner.exp", 0);
+            store.setInt(uuid, "fighter.exp", 0);
+            store.setInt(uuid, "builder.exp", 0);
+            store.setInt(uuid, "berserk.exp", 0);
+            store.setInt(uuid, "archer.exp", 0);
+            store.setInt(uuid, "gravitator.exp", 0);
+            store.setInt(uuid, "duelist.exp", 0);
+            store.setInt(uuid, "cloner.exp", 0);
+            store.setInt(uuid, "summoner.exp", 0);
+
+            // Сбрасываем общий уровень игрока
+            store.setInt(uuid, "player.level", 1);
+            store.setInt(uuid, "player.exp", 0);
+
+            // Помечаем что нужно заново выбрать кит
+            store.setInt(uuid, "kit.must_choose", 1);
+        }
+
+        store.save();
     }
 }

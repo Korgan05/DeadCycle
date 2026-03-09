@@ -1,20 +1,25 @@
 package me.korgan.deadcycle.kit;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Zombie;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -25,8 +30,16 @@ import java.util.UUID;
  */
 public class GravityCrushSkill implements Skill {
 
+    private static final Color PRESS_LINE_COLOR = Color.fromRGB(140, 70, 230);
+    private static final Color PRESS_IMPACT_COLOR = Color.fromRGB(95, 40, 180);
+    private static final long HOLD_GRACE_MS = 2200L;
+    private static final int CHANNEL_PERIOD_TICKS = 2;
+    private static final double GOLDEN_ANGLE = 2.399963229728653;
+
     private final DeadCyclePlugin plugin;
     private final SkillManager skillManager;
+    private final Map<UUID, BukkitTask> activeChannels = new HashMap<>();
+    private final Map<UUID, Long> holdUntil = new HashMap<>();
 
     // Конфиг параметры
     private int xpCost;
@@ -70,7 +83,7 @@ public class GravityCrushSkill implements Skill {
     }
 
     @Override
-    public int getXpCost(Player p) {
+    public double getManaCost(Player p) {
         return xpCost;
     }
 
@@ -84,8 +97,12 @@ public class GravityCrushSkill implements Skill {
         if (p == null || !p.isOnline())
             return false;
 
+        if (activeChannels.containsKey(p.getUniqueId()))
+            return true;
+
         // Можно использовать если есть опыт ИЛИ есть достаточно HP
-        boolean hasXp = p.getLevel() >= xpCost;
+        int manaCost = (int) getManaCost(p);
+        boolean hasXp = p.getLevel() >= manaCost;
         boolean hasHp = p.getHealth() > hpCost;
         return hasXp || hasHp;
     }
@@ -94,7 +111,12 @@ public class GravityCrushSkill implements Skill {
     public String getErrorMessage(Player p) {
         if (p == null || !p.isOnline())
             return "§cОшибка: игрок не в сети";
-        boolean hasXp = p.getLevel() >= xpCost;
+
+        if (activeChannels.containsKey(p.getUniqueId()))
+            return null;
+
+        int manaCost = (int) getManaCost(p);
+        boolean hasXp = p.getLevel() >= manaCost;
         boolean hasHp = p.getHealth() > hpCost;
         if (!hasXp && !hasHp)
             return "§cНедостаточно опыта или HP!";
@@ -106,93 +128,182 @@ public class GravityCrushSkill implements Skill {
         if (p == null || !p.isOnline())
             return;
 
-        World world = p.getWorld();
-        Location center = p.getLocation();
+        UUID uuid = p.getUniqueId();
+        holdUntil.put(uuid, System.currentTimeMillis() + HOLD_GRACE_MS);
 
-        int level = plugin.progress().getGravitatorLevel(p.getUniqueId());
-        double radius = radiusBase + (radiusPerLevel * level);
-        double damagePerTick = damagePerTickBase + (damagePerLevel * level);
-
-        // Урон игроку за использование - только если опыт не потратили
-        // (если опыт потратили, то HP не нужен)
-        if (p.getLevel() < xpCost) {
-            p.damage(hpCost);
-        }
-
-        // Прижимаем игрока к земле
-        p.setVelocity(new Vector(0, -1, 0));
-        p.addPotionEffect(
-                new PotionEffect(PotionEffectType.SLOWNESS, durationTicks, playerSlowAmplifier, true, false, true));
-
-        // Звуковой эффект
-        world.playSound(center, Sound.ENTITY_MINECART_RIDING, 1.0f, 0.7f);
-
-        // Визуальный круг радиуса поражения
-        spawnRadiusRing(world, center, radius);
-
-        // Собираем цели
-        List<Zombie> targets = new ArrayList<>();
-        Map<UUID, Boolean> aiState = new HashMap<>();
-
-        for (Entity e : world.getNearbyEntities(center, radius, radius, radius)) {
-            if (!(e instanceof Zombie))
-                continue;
-
-            Zombie z = (Zombie) e;
-            targets.add(z);
-            aiState.put(z.getUniqueId(), z.hasAI());
-
-            // Прижимаем и выключаем ИИ
-            z.setAI(false);
-            z.setVelocity(new Vector(0, -1, 0));
-            z.addPotionEffect(
-                    new PotionEffect(PotionEffectType.SLOWNESS, durationTicks, zombieSlowAmplifier, true, false, true));
-            z.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, durationTicks, 1, true, false, true));
-        }
-
-        if (targets.isEmpty()) {
-            // Даже если целей нет, устанавливаем кулдаун и выдаём опыт
-            skillManager.setCooldown(p.getUniqueId(), getId(), System.currentTimeMillis() + cooldownMs);
-            plugin.progress().addGravitatorExp(p, 1);
+        BukkitTask active = activeChannels.get(uuid);
+        if (active != null && !active.isCancelled()) {
             return;
         }
 
-        // Наносим урон каждую секунду
-        int totalSeconds = Math.max(1, durationTicks / 20);
-        new org.bukkit.scheduler.BukkitRunnable() {
-            int ticks = 0;
+        startChannel(p);
+    }
+
+    private void startChannel(Player player) {
+        UUID uuid = player.getUniqueId();
+
+        // Notifies boss that this skill is being used (for adaptation/counters)
+        if (plugin.bossDuel() != null) {
+            plugin.bossDuel().registerSkillUsage(player, "gravity_crush");
+        }
+
+        int costIntervalTicks = Math.max(20, durationTicks);
+
+        BukkitTask task = new org.bukkit.scheduler.BukkitRunnable() {
+            final Map<UUID, Boolean> aiState = new HashMap<>();
+            int ticksUntilCost = 0;
+            int ticksUntilDamage = 0;
+            int animationTick = 0;
 
             @Override
             public void run() {
-                ticks += 20;
-
-                for (Zombie z : targets) {
-                    if (z == null || !z.isValid() || z.isDead())
-                        continue;
-                    z.damage(damagePerTick, p);
-                    z.setVelocity(new Vector(0, -1, 0));
+                Player p = Bukkit.getPlayer(uuid);
+                if (p == null || !p.isOnline() || p.isDead()) {
+                    stopChannel(uuid, null, aiState, false);
+                    cancel();
+                    return;
                 }
 
-                if (ticks >= totalSeconds * 20) {
-                    // Восстанавливаем ИИ
-                    for (Zombie z : targets) {
-                        if (z == null || !z.isValid())
-                            continue;
-                        Boolean prev = aiState.get(z.getUniqueId());
-                        if (prev != null)
-                            z.setAI(prev);
+                if (!isHoldingSkill(p)) {
+                    stopChannel(uuid, p, aiState, true);
+                    cancel();
+                    return;
+                }
+
+                animationTick++;
+
+                if (ticksUntilCost <= 0) {
+                    if (!consumeCycleCost(p)) {
+                        p.sendMessage("§cГравитационный пресс выключен: закончились XP и HP.");
+                        stopChannel(uuid, p, aiState, true);
+                        cancel();
+                        return;
+                    }
+                    ticksUntilCost = costIntervalTicks;
+                }
+
+                boolean applyDamage = false;
+                if (ticksUntilDamage <= 0) {
+                    applyDamage = true;
+                    ticksUntilDamage = 20;
+                }
+
+                ticksUntilCost -= CHANNEL_PERIOD_TICKS;
+                ticksUntilDamage -= CHANNEL_PERIOD_TICKS;
+
+                World world = p.getWorld();
+                Location center = p.getLocation();
+
+                int level = plugin.progress().getGravitatorLevel(uuid);
+                double radius = radiusBase + (radiusPerLevel * level);
+                double damagePerTick = damagePerTickBase + (damagePerLevel * level);
+
+                p.setVelocity(new Vector(0, -1, 0));
+                p.addPotionEffect(
+                        new PotionEffect(PotionEffectType.SLOWNESS, 40, playerSlowAmplifier, true, false, true));
+
+                if (animationTick % 4 == 0) {
+                    spawnRadiusRing(world, center, radius);
+                }
+                spawnPressLinesInZone(world, center, radius, level, animationTick);
+
+                NamespacedKey bossKey = (plugin.bossDuel() != null) ? plugin.bossDuel().bossMarkKey() : null;
+                for (Entity e : world.getNearbyEntities(center, radius, radius, radius)) {
+                    if (!(e instanceof Zombie z))
+                        continue;
+
+                    boolean isBoss = bossKey != null
+                            && z.getPersistentDataContainer().has(bossKey, PersistentDataType.BYTE);
+
+                    if (isBoss) {
+                        if (applyDamage) {
+                            z.damage(damagePerTick, p);
+                        }
+                        continue;
                     }
 
-                    // Устанавливаем кулдаун ПОСЛЕ завершения скилла
-                    skillManager.setCooldown(p.getUniqueId(), getId(), System.currentTimeMillis() + cooldownMs);
+                    if (!aiState.containsKey(z.getUniqueId())) {
+                        aiState.put(z.getUniqueId(), z.hasAI());
+                        z.setAI(false);
+                    }
 
-                    // Выдаём опыт гравитатору
-                    plugin.progress().addGravitatorExp(p, 1);
+                    if (applyDamage) {
+                        z.damage(damagePerTick, p);
+                    }
+                    z.setVelocity(new Vector(0, -1, 0));
+                    z.addPotionEffect(
+                            new PotionEffect(PotionEffectType.SLOWNESS, 40, zombieSlowAmplifier, true, false, true));
+                    z.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 40, 1, true, false, true));
+                }
 
-                    cancel();
+                if (animationTick % 5 == 0) {
+                    world.playSound(center, Sound.ENTITY_MINECART_RIDING, 0.7f, 0.7f);
                 }
             }
-        }.runTaskTimer(plugin, 0L, 20L);
+        }.runTaskTimer(plugin, 0L, CHANNEL_PERIOD_TICKS);
+
+        activeChannels.put(uuid, task);
+    }
+
+    private boolean consumeCycleCost(Player p) {
+        int manaCost = (int) getManaCost(p);
+        if (plugin.mana().hasXp(p, manaCost)) {
+            return plugin.mana().consumeXp(p, manaCost);
+        }
+
+        if (p.getHealth() > hpCost) {
+            p.damage(hpCost);
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean isHoldingSkill(Player p) {
+        if (p == null || !p.isOnline())
+            return false;
+
+        UUID uuid = p.getUniqueId();
+        long until = holdUntil.getOrDefault(uuid, 0L);
+        boolean holdingWindow = System.currentTimeMillis() <= until || p.isHandRaised();
+
+        if (!holdingWindow)
+            return false;
+
+        ItemStack main = p.getInventory().getItemInMainHand();
+        ItemStack off = p.getInventory().getItemInOffHand();
+
+        return "gravity_crush".equals(plugin.kit().getSkillIdFromItem(main))
+                || "gravity_crush".equals(plugin.kit().getSkillIdFromItem(off));
+    }
+
+    private void stopChannel(UUID uuid, Player player, Map<UUID, Boolean> aiState, boolean applyCooldown) {
+        BukkitTask running = activeChannels.remove(uuid);
+        if (running != null && !running.isCancelled()) {
+            running.cancel();
+        }
+
+        holdUntil.remove(uuid);
+        restoreAi(aiState);
+
+        if (applyCooldown) {
+            skillManager.setCooldown(uuid, getId(), System.currentTimeMillis() + cooldownMs);
+            if (player != null && player.isOnline()) {
+                plugin.progress().addGravitatorExp(player, 1);
+            }
+        }
+    }
+
+    private void restoreAi(Map<UUID, Boolean> aiState) {
+        for (Map.Entry<UUID, Boolean> entry : aiState.entrySet()) {
+            Entity ent = Bukkit.getEntity(entry.getKey());
+            if (!(ent instanceof Zombie z))
+                continue;
+            if (!z.isValid() || z.isDead())
+                continue;
+            z.setAI(entry.getValue());
+        }
+        aiState.clear();
     }
 
     private void spawnRadiusRing(World world, Location center, double radius) {
@@ -207,8 +318,75 @@ public class GravityCrushSkill implements Skill {
         }
     }
 
+    private void spawnPressLinesInZone(World world, Location center, double radius, int level, int animationTick) {
+        int normalizedLevel = Math.max(0, level);
+        int lineCount = Math.min(88, 6 + normalizedLevel * 3 + (int) Math.round(radius * 1.4));
+        double zoneRadius = Math.max(0.8, radius * 0.9);
+        double topBase = 1.2 + (normalizedLevel * 0.05);
+        double depthBase = 1.25 + (normalizedLevel * 0.16);
+        double speed = Math.min(0.95, 0.30 + (normalizedLevel * 0.02));
+        double phase = animationTick * speed;
+
+        for (int i = 0; i < lineCount; i++) {
+            double seed = i * 0.7548776662466927;
+            double ring = Math.sqrt((i + 0.5) / lineCount);
+            double distance = zoneRadius * ring;
+            double angle = (i * GOLDEN_ANGLE + animationTick * 0.11) % (Math.PI * 2.0);
+            double x = Math.cos(angle) * distance;
+            double z = Math.sin(angle) * distance;
+
+            double topY = topBase + ((fract(seed * 11.0) - 0.5) * 0.65);
+            double depth = depthBase * (0.72 + (fract(seed * 7.0) * 0.7));
+            double progress = fract(seed + phase);
+            double headY = topY - (depth * progress);
+
+            Particle.DustOptions lineDust = createPressLineDust(normalizedLevel, seed);
+            for (int trail = 0; trail < 4; trail++) {
+                double y = headY + (trail * 0.10);
+                if (y > topY + 0.02)
+                    break;
+
+                Location point = center.clone().add(x, y, z);
+                world.spawnParticle(Particle.DUST, point, 1, 0.008, 0.008, 0.008, 0.0, lineDust);
+            }
+
+            if (progress > 0.86) {
+                Location impactPoint = center.clone().add(x, topY - depth, z);
+                world.spawnParticle(Particle.DUST, impactPoint, 1, 0.01, 0.01, 0.01, 0.0,
+                        createPressImpactDust(normalizedLevel, seed));
+            }
+        }
+    }
+
+    private Particle.DustOptions createPressLineDust(int level, double seed) {
+        float minSize = 0.18f;
+        float maxSize = (float) Math.min(0.52, 0.34 + (level * 0.012));
+        float ratio = (float) fract(seed * 17.0);
+        float size = minSize + ((maxSize - minSize) * ratio);
+        return new Particle.DustOptions(PRESS_LINE_COLOR, size);
+    }
+
+    private Particle.DustOptions createPressImpactDust(int level, double seed) {
+        float minSize = 0.22f;
+        float maxSize = (float) Math.min(0.56, 0.40 + (level * 0.012));
+        float ratio = (float) fract(seed * 19.0 + 0.37);
+        float size = minSize + ((maxSize - minSize) * ratio);
+        return new Particle.DustOptions(PRESS_IMPACT_COLOR, size);
+    }
+
+    private double fract(double value) {
+        return value - Math.floor(value);
+    }
+
     @Override
     public void reset() {
+        for (BukkitTask task : new ArrayList<>(activeChannels.values())) {
+            if (task != null && !task.isCancelled()) {
+                task.cancel();
+            }
+        }
+        activeChannels.clear();
+        holdUntil.clear();
         loadConfig();
     }
 }

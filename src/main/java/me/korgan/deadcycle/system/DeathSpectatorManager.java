@@ -29,9 +29,18 @@ public class DeathSpectatorManager implements Listener {
     private final DeadCyclePlugin plugin;
     private final Set<UUID> waitingForDayRespawn = ConcurrentHashMap.newKeySet();
     private BukkitTask clearZombieTargetsTask;
+    private boolean isFullGameReset = false;
 
     public DeathSpectatorManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
+    }
+
+    /**
+     * Помечает, что произойдёт полный рестарт игры (все игроки умерли).
+     * При этом скиллы НЕ должны выдаваться при возрождении.
+     */
+    public void setFullGameResetFlag(boolean reset) {
+        this.isFullGameReset = reset;
     }
 
     public boolean isWaitingForDay(UUID uuid) {
@@ -46,6 +55,8 @@ public class DeathSpectatorManager implements Listener {
                 reviveNowOrAfterRespawn(p);
             }
         }
+        // После того как все игроки возрождены - сбрасываем флаг
+        isFullGameReset = false;
     }
 
     @EventHandler
@@ -59,29 +70,54 @@ public class DeathSpectatorManager implements Listener {
             return;
 
         // По просьбе: смерть во время ночи -> наблюдатель до конца ночи.
-        if (phase.getPhase() != PhaseManager.Phase.NIGHT)
+        if (phase.getPhase() == PhaseManager.Phase.NIGHT) {
+            waitingForDayRespawn.add(p.getUniqueId());
+            startClearZombieTargetsTaskIfNeeded();
+
+            // Сообщение игроку: он умер и возродится днём.
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!p.isOnline())
+                    return;
+                try {
+                    p.sendMessage("§cТы умер. §7До конца ночи ты будешь в режиме наблюдателя.");
+                    p.sendMessage("§aТы возродишься, когда наступит день.");
+                } catch (Throwable ignored) {
+                }
+            }, 1L);
+
+            // Авто-респавн, чтобы игрок сразу мог наблюдать.
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!p.isOnline())
+                    return;
+                tryForceRespawn(p);
+            }, 2L);
+        }
+
+        // Проверяем, умерли ли все игроки (в любое время - день или ночь)
+        Bukkit.getScheduler().runTaskLater(plugin, this::checkIfAllPlayersDead, 3L);
+    }
+
+    private void checkIfAllPlayersDead() {
+        if (plugin.phase() == null)
             return;
 
-        waitingForDayRespawn.add(p.getUniqueId());
-        startClearZombieTargetsTaskIfNeeded();
-
-        // Сообщение игроку: он умер и возродится днём.
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!p.isOnline())
-                return;
-            try {
-                p.sendMessage("§cТы умер. §7До конца ночи ты будешь в режиме наблюдателя.");
-                p.sendMessage("§aТы возродишься, когда наступит день.");
-            } catch (Throwable ignored) {
+        // Считаем живых игроков (не spectator и не dead)
+        int aliveCount = 0;
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p == null)
+                continue;
+            // Игрок считается живым, если он не в spectator и не мёртв
+            if (p.getGameMode() != GameMode.SPECTATOR && !p.isDead()) {
+                aliveCount++;
             }
-        }, 1L);
+        }
 
-        // Авто-респавн, чтобы игрок сразу мог наблюдать.
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!p.isOnline())
-                return;
-            tryForceRespawn(p);
-        }, 2L);
+        // Если на сервере есть игроки, но все мертвы/spectator - сброс игры
+        if (aliveCount == 0 && !Bukkit.getOnlinePlayers().isEmpty()) {
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.phase().reset();
+            });
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -220,6 +256,16 @@ public class DeathSpectatorManager implements Listener {
                     }
                 }
             });
+        }
+
+        // После возрождения днём — выдаём разблокированные скиллы (если не полный
+        // рестарт)
+        if (!isFullGameReset && plugin.specialSkills() != null) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!p.isOnline())
+                    return;
+                plugin.specialSkills().giveUnlockedSkillsToPlayer(p);
+            }, 5L);
         }
 
         // После возрождения днём — обязательный повторный выбор кита (если помечен).

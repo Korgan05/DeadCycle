@@ -48,6 +48,11 @@ public class EconomyManager implements Listener {
         save();
     }
 
+    public void clearAll() {
+        data.set("money", null);
+        save();
+    }
+
     public void save() {
         try {
             data.save(file);
@@ -98,6 +103,27 @@ public class EconomyManager implements Listener {
             int exp = plugin.getConfig().getInt("kit_xp.gravitator.exp_per_zombie", 2);
             if (exp > 0)
                 plugin.progress().addGravitatorExp(killer, exp);
+        }
+
+        // XP ритуалисту за убийство
+        if (kit == KitManager.Kit.DUELIST) {
+            int exp = plugin.getConfig().getInt("kit_xp.duelist.exp_per_zombie", 1);
+            if (exp > 0)
+                plugin.progress().addDuelistExp(killer, exp);
+        }
+
+        // XP клонеру за убийство (дополнительно к XP за убийства клонов)
+        if (kit == KitManager.Kit.CLONER) {
+            int exp = plugin.getConfig().getInt("kit_xp.cloner.exp_per_zombie", 1);
+            if (exp > 0)
+                plugin.progress().addClonerExp(killer, exp);
+        }
+
+        // XP призывателю за прямое убийство
+        if (kit == KitManager.Kit.SUMMONER) {
+            int exp = plugin.getConfig().getInt("kit_xp.summoner.exp_per_zombie", 1);
+            if (exp > 0)
+                plugin.progress().addSummonerExp(killer, exp);
         }
     }
 }

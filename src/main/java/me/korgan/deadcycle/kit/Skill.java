@@ -19,10 +19,10 @@ public interface Skill {
     String getDisplayName();
 
     /**
-     * Стоимость скилла в опыте (XP).
+     * Стоимость скилла в мане.
      * Зависит от уровня скилла и параметров конфига.
      */
-    int getXpCost(Player p);
+    double getManaCost(Player p);
 
     /**
      * Кулдаун скилла в миллисекундах.

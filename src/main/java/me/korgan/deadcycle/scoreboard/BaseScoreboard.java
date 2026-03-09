@@ -23,7 +23,8 @@ public class BaseScoreboard {
 
     private void update(Player p) {
         ScoreboardManager sm = Bukkit.getScoreboardManager();
-        if (sm == null) return;
+        if (sm == null)
+            return;
 
         Scoreboard sb = sm.getNewScoreboard();
         Objective o = sb.registerNewObjective("dc", "dummy",
@@ -44,7 +45,18 @@ public class BaseScoreboard {
         o.getScore(ChatColor.GOLD + "Деньги: " + ChatColor.WHITE + money).setScore(line--);
 
         KitManager.Kit kit = plugin.kit().getKit(p.getUniqueId());
-        String kitName = (kit == null) ? "-" : kit.name();
+        String kitName = switch (kit) {
+            case FIGHTER -> "Боец";
+            case MINER -> "Шахтёр";
+            case BUILDER -> "Билдер";
+            case ARCHER -> "Лучник";
+            case BERSERK -> "Берсерк";
+            case GRAVITATOR -> "Гравитатор";
+            case DUELIST -> "Ритуалист";
+            case CLONER -> "Клонер";
+            case SUMMONER -> "Призыватель";
+            case null, default -> "-";
+        };
         o.getScore(ChatColor.AQUA + "Кит: " + ChatColor.WHITE + kitName).setScore(line--);
 
         int kitLvl = plugin.progress().getKitLevel(p.getUniqueId(), kit);

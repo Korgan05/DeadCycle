@@ -35,6 +35,20 @@ public class SkillManager {
         registerSkill(new GravityCrushSkill(plugin, this));
         registerSkill(new LevitationStrikeSkill(plugin, this));
 
+        // Скиллы для Ритуалиста
+        registerSkill(new DuelistBreachSkill(plugin, this));
+        registerSkill(new DuelistAegisSkill(plugin, this));
+
+        // Скиллы для Клонера
+        registerSkill(new CloneSummonSkill(plugin, this));
+        registerSkill(new CloneModeSkill(plugin, this));
+
+        // Скиллы для Призывателя
+        registerSkill(new SummonerSummonSkill(plugin, this, SummonerKitManager.SummonType.WOLF));
+        registerSkill(new SummonerSummonSkill(plugin, this, SummonerKitManager.SummonType.PHANTOM));
+        registerSkill(new SummonerSummonSkill(plugin, this, SummonerKitManager.SummonType.GOLEM));
+        registerSkill(new SummonerSummonSkill(plugin, this, SummonerKitManager.SummonType.VEX));
+
         // Позже добавим скиллы для других китов...
     }
 
@@ -64,6 +78,9 @@ public class SkillManager {
         return switch (kit) {
             case ARCHER -> getSkill("archer_rain");
             case GRAVITATOR -> getSkill("gravity_crush"); // По умолчанию первый скилл
+            case DUELIST -> getSkill("ritual_cut");
+            case CLONER -> getSkill("clone_summon");
+            case SUMMONER -> getSkill("summoner_wolves");
             // case FIGHTER -> getSkill("fighter_berserk");
             // case MINER -> getSkill("miner_drill");
             default -> null;
@@ -129,47 +146,31 @@ public class SkillManager {
             return false;
         }
 
-        // Специальная логика для Gravity Crush: сначала пытаемся потратить XP, если нет
-        // Специальная логика для Gravity Crush и Levitation Strike
-        if (skillId.equals("gravity_crush") || skillId.equals("levitation_strike")) {
-            int xpCost = skill.getXpCost(p);
-            int currentXp = p.getLevel();
-
-            if (currentXp >= xpCost) {
-                // Хватает опыта - берём его
-                p.setLevel(currentXp - xpCost);
-            } else {
-                // Опыта не хватает
-                if (skillId.equals("levitation_strike")) {
-                    // Для антигравитации - просто отказ
-                    p.sendMessage("§cНедостаточно опыта! Нужно: " + xpCost + ", есть: " + currentXp);
-                    return false;
-                }
-                // Для gravity_crush - проверяем HP (будет потрачен в activate())
-                // HP стоимость будет потрачена в самом activate()
-                if (p.getHealth() <= 0) {
-                    p.sendMessage("§cНельзя использовать скилл: недостаточно здоровья!");
-                    return false;
-                }
-            }
-
+        // Для gravity_crush особая логика: ресурс и удержание обрабатываются внутри
+        // самого скилла
+        if ("gravity_crush".equals(skillId)) {
             skill.activate(p);
+            if (plugin.miniBoss() != null && !"clone_mode".equals(skillId)) {
+                plugin.miniBoss().onPlayerSkillUsed(p, skillId);
+            }
             return true;
         }
 
-        // Обычная логика для других скиллов
-        int cost = skill.getXpCost(p);
-        int current = p.getLevel();
-        if (current < cost) {
-            p.sendMessage("§cНедостаточно опыта! Нужно: " + cost + ", есть: " + current);
+        // Обычная логика для всех остальных скиллов
+        int manaCost = (int) skill.getManaCost(p);
+        if (!plugin.mana().consumeXp(p, manaCost)) {
+            int current = plugin.mana().getCurrentXp(p);
+            int max = plugin.mana().getMaxXp(p.getUniqueId());
+            p.sendMessage(String.format("§cНедостаточно маны! Нужно: §e%d§c, есть: §e%d§7/§3%d",
+                    manaCost, current, max));
             return false;
         }
 
-        // Берём опыт
-        p.setLevel(current - cost);
-
-        // Активируем скилл
         skill.activate(p);
+
+        if (plugin.miniBoss() != null && !"clone_mode".equals(skillId)) {
+            plugin.miniBoss().onPlayerSkillUsed(p, skillId);
+        }
 
         return true;
     }

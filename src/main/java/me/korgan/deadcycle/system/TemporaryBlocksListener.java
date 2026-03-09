@@ -25,6 +25,11 @@ public class TemporaryBlocksListener implements Listener {
         if (placed == null)
             return;
 
+        // don't auto-remove blocks placed by admins/operators
+        var player = e.getPlayer();
+        if (player != null && (player.isOp() || player.hasPermission("deadcycle.admin")))
+            return;
+
         Material type = placed.getType();
         if (type == Material.AIR)
             return;

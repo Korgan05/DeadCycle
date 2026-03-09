@@ -1,7 +1,9 @@
 package me.korgan.deadcycle;
 
+import me.korgan.deadcycle.adminpower.AnimePowerManager;
 import me.korgan.deadcycle.base.*;
 import me.korgan.deadcycle.boss.BossDuelManager;
+import me.korgan.deadcycle.boss.MiniBossManager;
 import me.korgan.deadcycle.econ.*;
 import me.korgan.deadcycle.kit.*;
 import me.korgan.deadcycle.mobs.*;
@@ -28,10 +30,14 @@ public class DeadCyclePlugin extends JavaPlugin {
     private ProgressManager progress;
     private ManaManager mana;
     private SpecialSkillManager specialSkills;
+    private AnimePowerManager animePowers;
 
     private KitManager kit;
     private KitMenu kitMenu;
     private SkillManager skills;
+    private CloneKitManager cloneKit;
+    private SummonerKitManager summonerKit;
+    private DuelistBossPassiveListener duelistPassive;
 
     private BlockHealthManager blockHealth;
     private SiegeManager siege;
@@ -39,6 +45,7 @@ public class DeadCyclePlugin extends JavaPlugin {
     private PhaseManager phase;
 
     private BossDuelManager bossDuel;
+    private MiniBossManager miniBoss;
     private me.korgan.deadcycle.boss.BossHelpScrollListener bossHelpScrollListener;
 
     private RegenMiningListener regenMining;
@@ -69,10 +76,14 @@ public class DeadCyclePlugin extends JavaPlugin {
         progress = new ProgressManager(this, playerData);
         mana = new ManaManager(this);
         specialSkills = new SpecialSkillManager(this);
+        animePowers = new AnimePowerManager(this);
 
         kit = new KitManager(this);
         kitMenu = new KitMenu(this);
         skills = new SkillManager(this);
+        cloneKit = new CloneKitManager(this);
+        summonerKit = new SummonerKitManager(this);
+        duelistPassive = new DuelistBossPassiveListener(this);
 
         blockHealth = new BlockHealthManager(this);
         blockHealth.startVisuals();
@@ -82,6 +93,7 @@ public class DeadCyclePlugin extends JavaPlugin {
         phase = new PhaseManager(this, siege);
 
         bossDuel = new BossDuelManager(this);
+        miniBoss = new MiniBossManager(this);
         bossHelpScrollListener = new me.korgan.deadcycle.boss.BossHelpScrollListener(this);
 
         deathSpectator = new DeathSpectatorManager(this);
@@ -102,10 +114,12 @@ public class DeadCyclePlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new TemporaryBlocksListener(this), this);
         Bukkit.getPluginManager().registerEvents(new ManaListener(this), this);
         Bukkit.getPluginManager().registerEvents(specialSkills, this);
+        Bukkit.getPluginManager().registerEvents(animePowers, this);
 
         Bukkit.getPluginManager().registerEvents(econ, this);
         Bukkit.getPluginManager().registerEvents(new MobSpawnController(this), this);
         Bukkit.getPluginManager().registerEvents(bossDuel, this);
+        Bukkit.getPluginManager().registerEvents(miniBoss, this);
         Bukkit.getPluginManager().registerEvents(bossHelpScrollListener, this);
 
         Bukkit.getPluginManager().registerEvents(new BaseBuildProtectionListener(this), this);
@@ -118,7 +132,10 @@ public class DeadCyclePlugin extends JavaPlugin {
 
         Bukkit.getPluginManager().registerEvents(kit, this);
         Bukkit.getPluginManager().registerEvents(kitMenu, this);
+        Bukkit.getPluginManager().registerEvents(cloneKit, this);
+        Bukkit.getPluginManager().registerEvents(summonerKit, this);
         Bukkit.getPluginManager().registerEvents(new BerserkListener(this), this);
+        Bukkit.getPluginManager().registerEvents(duelistPassive, this);
 
         Bukkit.getPluginManager().registerEvents(repairGui, this);
         Bukkit.getPluginManager().registerEvents(baseGui, this);
@@ -183,11 +200,19 @@ public class DeadCyclePlugin extends JavaPlugin {
 
         if (bossDuel != null)
             bossDuel.forceEnd("plugin_disable");
+        if (miniBoss != null)
+            miniBoss.stopNight();
+        if (cloneKit != null)
+            cloneKit.shutdown();
+        if (summonerKit != null)
+            summonerKit.shutdown();
 
         if (mana != null)
             mana.shutdown();
         if (specialSkills != null)
             specialSkills.shutdown();
+        if (animePowers != null)
+            animePowers.shutdown();
 
         if (baseResources != null)
             baseResources.save();
@@ -231,7 +256,8 @@ public class DeadCyclePlugin extends JavaPlugin {
             var mark = z.getPersistentDataContainer().get(key, org.bukkit.persistence.PersistentDataType.BYTE);
             if (mark == null || mark != (byte) 1)
                 continue;
-            siege.tickZombie(z, damage);
+            int siegeDamage = zombie.getSiegeDamageFor(z, damage);
+            siege.tickZombie(z, siegeDamage);
         }
     }
 
@@ -246,8 +272,18 @@ public class DeadCyclePlugin extends JavaPlugin {
             mana.reload();
         if (specialSkills != null)
             specialSkills.reload();
+        if (animePowers != null)
+            animePowers.reload();
         if (bossDuel != null)
             bossDuel.reload();
+        if (miniBoss != null)
+            miniBoss.reload();
+        if (zombie != null)
+            zombie.reload();
+        if (cloneKit != null)
+            cloneKit.reload();
+        if (summonerKit != null)
+            summonerKit.reload();
     }
 
     // ===== getters =====
@@ -292,6 +328,10 @@ public class DeadCyclePlugin extends JavaPlugin {
         return bossDuel;
     }
 
+    public MiniBossManager miniBoss() {
+        return miniBoss;
+    }
+
     public me.korgan.deadcycle.boss.BossHelpScrollListener getBossHelpScrollListener() {
         return bossHelpScrollListener;
     }
@@ -332,12 +372,24 @@ public class DeadCyclePlugin extends JavaPlugin {
         return skills;
     }
 
+    public CloneKitManager cloneKit() {
+        return cloneKit;
+    }
+
+    public SummonerKitManager summonerKit() {
+        return summonerKit;
+    }
+
     public ManaManager mana() {
         return mana;
     }
 
     public SpecialSkillManager specialSkills() {
         return specialSkills;
+    }
+
+    public AnimePowerManager animePowers() {
+        return animePowers;
     }
 
     public PlayerDataStore playerData() {

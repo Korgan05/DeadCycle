@@ -45,6 +45,14 @@ public class BaseResourceManager {
         plugin.saveConfig();
     }
 
+    public void resetAll() {
+        basePoints = 0L;
+        for (ResourceType t : ResourceType.values()) {
+            pointsByType.put(t, 0L);
+        }
+        save();
+    }
+
     public long getBasePoints() {
         return basePoints;
     }

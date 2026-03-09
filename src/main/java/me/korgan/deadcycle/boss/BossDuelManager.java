@@ -94,28 +94,62 @@ public class BossDuelManager implements Listener {
     private UUID allyPlayerUuid = null;
     private boolean allyUsed = false;
     private long lastForceSeparationTime = 0L;
+    private UUID bossFocusUuid = null;
+    private long bossFocusUntil = 0L;
     private final Map<UUID, Long> playerDebuffExpiry = new HashMap<>();
+    private final Map<UUID, Long> antiCheatLastHitAt = new HashMap<>();
+    private final Map<UUID, Integer> antiCheatFastHitScore = new HashMap<>();
+    private final Map<UUID, MovementPatternState> antiCheatMovement = new HashMap<>();
+    private final Map<UUID, Long> antiCheatPunishCooldown = new HashMap<>();
     private BukkitTask assistCheckTask;
 
     // Boss adaptation mechanics
     private final Map<UUID, Map<String, SkillUsageInfo>> playerSkillTracking = new HashMap<>();
     private final Map<UUID, Long> skillCommentCooldown = new HashMap<>();
     private BukkitTask adaptationCheckTask;
+    private static final long SKILL_TRACKING_FORGET_MS = 90_000L;
+    private static final long RECENT_SKILL_WINDOW_MS = 6_000L;
 
     private static class SkillUsageInfo {
         long lastUseTime;
         int useCount;
-        boolean commentedFirstUse;
+        int adaptationTier;
+        long lastCounterTime;
+        int lastAnnouncedTier;
 
         SkillUsageInfo() {
             this.lastUseTime = 0L;
             this.useCount = 0;
-            this.commentedFirstUse = false;
+            this.adaptationTier = 0;
+            this.lastCounterTime = 0L;
+            this.lastAnnouncedTier = 0;
         }
+    }
+
+    private static class RecentSkillSnapshot {
+        final String skillName;
+        final SkillUsageInfo info;
+
+        RecentSkillSnapshot(String skillName, SkillUsageInfo info) {
+            this.skillName = skillName;
+            this.info = info;
+        }
+    }
+
+    private static class MovementPatternState {
+        long lastMoveAt;
+        Vector lastDirection;
+        int zigZagScore;
     }
 
     private static final String BOSS_NAME = "§5§l[?????]";
     private static final String BOSS_PREFIX = "§5§l[?????] §d";
+
+    private static final long FAST_HIT_MIN_INTERVAL_MS = 125L;
+    private static final long FAST_HIT_MID_INTERVAL_MS = 180L;
+    private static final int FAST_HIT_TRIGGER_SCORE = 8;
+    private static final int ZIGZAG_TRIGGER_SCORE = 8;
+    private static final long ANTI_CHEAT_PUNISH_COOLDOWN_MS = 2800L;
 
     private static final int DUEL_RADIUS = 50;
     private static final int MIN_DISTANCE_FROM_BASE = 120;
@@ -241,14 +275,14 @@ public class BossDuelManager implements Listener {
             return;
         }
 
-        plugin.getLogger().info("[BossDuel] Ночь " + dayCount + ": поиск дуэлянта...");
+        plugin.getLogger().info("[BossDuel] Ночь " + dayCount + ": поиск ритуалиста...");
         Player duelPlayer = selectDuelist(baseWorld);
         if (duelPlayer == null) {
-            plugin.getLogger().info("[BossDuel] Дуэлянт не найден.");
+            plugin.getLogger().info("[BossDuel] Ритуалист не найден.");
             return;
         }
 
-        plugin.getLogger().info("[BossDuel] Дуэлянт найден: " + duelPlayer.getName() + ". Поиск локации спавна...");
+        plugin.getLogger().info("[BossDuel] Ритуалист найден: " + duelPlayer.getName() + ". Поиск локации спавна...");
         Location spawn = findBossSpawn(baseWorld);
         if (spawn == null) {
             plugin.getLogger().info("[BossDuel] Локация спавна не найдена.");
@@ -264,6 +298,11 @@ public class BossDuelManager implements Listener {
         if (!active && stage == Stage.NONE)
             return;
         endDuel(reason, false, false);
+    }
+
+    public void clearSkillAdaptationData() {
+        playerSkillTracking.clear();
+        skillCommentCooldown.clear();
     }
 
     private Player selectDuelist(World baseWorld) {
@@ -304,7 +343,7 @@ public class BossDuelManager implements Listener {
         });
 
         Player selected = candidates.get(0);
-        plugin.getLogger().info("[BossDuel] Выбран дуэлянт: " + selected.getName());
+        plugin.getLogger().info("[BossDuel] Выбран ритуалист: " + selected.getName());
         return selected;
     }
 
@@ -464,11 +503,15 @@ public class BossDuelManager implements Listener {
         targetTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!active || stage != Stage.FIGHT)
                 return;
-            Player p = getDuelPlayer();
             Zombie boss = getBoss();
-            if (p == null || boss == null)
+            if (boss == null)
                 return;
-            boss.setTarget(p);
+
+            Player target = pickSmartTarget(boss);
+            if (target == null)
+                return;
+
+            boss.setTarget(target);
         }, 20L, 20L * 2L);
     }
 
@@ -515,8 +558,11 @@ public class BossDuelManager implements Listener {
                 return;
 
             Zombie boss = getBoss();
-            Player p = getDuelPlayer();
-            if (boss == null || p == null || boss.isDead())
+            if (boss == null || boss.isDead())
+                return;
+
+            Player p = pickSmartTarget(boss);
+            if (p == null)
                 return;
 
             // Включаем AI и даём цель — пусть сам идёт по навигации
@@ -547,7 +593,7 @@ public class BossDuelManager implements Listener {
                     return;
 
                 Zombie currentBoss = getBoss();
-                Player target = getDuelPlayer();
+                Player target = (currentBoss != null) ? pickSmartTarget(currentBoss) : null;
                 if (currentBoss == null || target == null || currentBoss.isDead())
                     return;
 
@@ -558,7 +604,8 @@ public class BossDuelManager implements Listener {
 
                 Vector slide = dir.multiply(dashSpeed).setY(0.0);
                 if (duelCenter != null
-                        && currentBoss.getLocation().distanceSquared(duelCenter) > (DUEL_RADIUS - 3) * (DUEL_RADIUS - 3)) {
+                        && currentBoss.getLocation().distanceSquared(duelCenter) > (DUEL_RADIUS - 3)
+                                * (DUEL_RADIUS - 3)) {
                     slide = slide.multiply(0.6);
                 }
 
@@ -719,8 +766,18 @@ public class BossDuelManager implements Listener {
         helpItemGiven = false;
         allyPlayerUuid = null;
         allyUsed = false;
+        bossFocusUuid = null;
+        bossFocusUntil = 0L;
         playerDebuffExpiry.clear();
+        antiCheatLastHitAt.clear();
+        antiCheatFastHitScore.clear();
+        antiCheatMovement.clear();
+        antiCheatPunishCooldown.clear();
         lastForceSeparationTime = 0L;
+
+        if (shouldClearAdaptationOnEnd(reason)) {
+            clearSkillAdaptationData();
+        }
 
         Zombie boss = getBoss();
         if (boss != null && !boss.isDead()) {
@@ -760,6 +817,11 @@ public class BossDuelManager implements Listener {
         dashPreparing = false;
         nextDashAtMillis = 0L;
         stage = Stage.NONE;
+    }
+
+    private boolean shouldClearAdaptationOnEnd(String reason) {
+        return "boss_dead".equalsIgnoreCase(reason)
+                || "all_players_dead".equalsIgnoreCase(reason);
     }
 
     private void recordArenaBlock(World w, int x, int y, int z) {
@@ -937,6 +999,94 @@ public class BossDuelManager implements Listener {
         return Bukkit.getPlayer(duelPlayerUuid);
     }
 
+    private Player getAllyPlayer() {
+        if (allyPlayerUuid == null)
+            return null;
+        return Bukkit.getPlayer(allyPlayerUuid);
+    }
+
+    private boolean isValidDuelTarget(Player p) {
+        if (p == null || !p.isOnline() || p.isDead())
+            return false;
+        if (!isDuelPlayer(p.getUniqueId()))
+            return false;
+        if (duelCenter == null || duelCenter.getWorld() == null)
+            return true;
+        if (!p.getWorld().getUID().equals(duelCenter.getWorld().getUID()))
+            return false;
+        return p.getLocation().distanceSquared(duelCenter) <= (DUEL_RADIUS + 3.0) * (DUEL_RADIUS + 3.0);
+    }
+
+    private double getHealthRatio(Player p) {
+        if (p == null)
+            return 1.0;
+        AttributeInstance max = p.getAttribute(Attribute.MAX_HEALTH);
+        double maxHealth = (max != null) ? max.getValue() : 20.0;
+        if (maxHealth <= 0.0)
+            return 1.0;
+        return Math.max(0.0, Math.min(1.0, p.getHealth() / maxHealth));
+    }
+
+    private double targetScore(Zombie boss, Player target) {
+        if (boss == null || target == null || boss.getWorld() != target.getWorld())
+            return Double.MAX_VALUE;
+        double distance = boss.getLocation().distance(target.getLocation());
+        return distance * 1.8 + getHealthRatio(target) * 8.0;
+    }
+
+    private Player pickSmartTarget(Zombie boss) {
+        Player main = getDuelPlayer();
+        Player ally = getAllyPlayer();
+
+        List<Player> candidates = new ArrayList<>(2);
+        if (isValidDuelTarget(main))
+            candidates.add(main);
+        if (isValidDuelTarget(ally))
+            candidates.add(ally);
+
+        if (candidates.isEmpty())
+            return null;
+
+        if (candidates.size() == 1) {
+            Player only = candidates.get(0);
+            bossFocusUuid = only.getUniqueId();
+            bossFocusUntil = System.currentTimeMillis() + 1200L;
+            return only;
+        }
+
+        long now = System.currentTimeMillis();
+        Player current = null;
+        if (boss != null && boss.getTarget() instanceof Player currentTarget && isValidDuelTarget(currentTarget)) {
+            current = currentTarget;
+        }
+
+        if (current != null && bossFocusUuid != null
+                && current.getUniqueId().equals(bossFocusUuid)
+                && now < bossFocusUntil) {
+            return current;
+        }
+
+        Player first = candidates.get(0);
+        Player second = candidates.get(1);
+        Player chosen;
+        if (current != null) {
+            Player other = current.getUniqueId().equals(first.getUniqueId()) ? second : first;
+            double scoreCurrent = targetScore(boss, current);
+            double scoreOther = targetScore(boss, other);
+
+            boolean shouldSwitch = scoreOther <= scoreCurrent + 4.0 || rng.nextDouble() < 0.45;
+            chosen = shouldSwitch ? other : current;
+        } else {
+            double scoreFirst = targetScore(boss, first);
+            double scoreSecond = targetScore(boss, second);
+            chosen = (scoreFirst <= scoreSecond) ? first : second;
+        }
+
+        bossFocusUuid = chosen.getUniqueId();
+        bossFocusUntil = now + 1200L + rng.nextInt(1200);
+        return chosen;
+    }
+
     private Zombie getBoss() {
         if (bossUuid == null)
             return null;
@@ -1049,6 +1199,8 @@ public class BossDuelManager implements Listener {
                 return;
             if (e.getTo().getWorld() != duelCenter.getWorld())
                 return;
+
+            checkMovementAntiCheat(p, e.getFrom(), e.getTo());
 
             double distSq = e.getTo().distanceSquared(duelCenter);
             if (distSq <= DUEL_RADIUS * DUEL_RADIUS) {
@@ -1202,13 +1354,18 @@ public class BossDuelManager implements Listener {
         if (!z.getPersistentDataContainer().has(bossKey, PersistentDataType.BYTE))
             return;
 
-        Player duelPlayer = getDuelPlayer();
-        if (duelPlayer == null)
+        if (!active || stage != Stage.FIGHT)
             return;
 
-        if (e.getTarget() == null || !e.getTarget().getUniqueId().equals(duelPlayer.getUniqueId())) {
+        Player smartTarget = pickSmartTarget(z);
+        if (smartTarget == null)
+            return;
+
+        if (!(e.getTarget() instanceof Player current)
+                || !isValidDuelTarget(current)
+                || !current.getUniqueId().equals(smartTarget.getUniqueId())) {
             e.setCancelled(true);
-            z.setTarget(duelPlayer);
+            z.setTarget(smartTarget);
         }
     }
 
@@ -1246,8 +1403,47 @@ public class BossDuelManager implements Listener {
             return;
         }
 
+        if (checkFastHitAntiCheat(p, z, e)) {
+            return;
+        }
+
+        KitManager.Kit playerKit = plugin.kit().getKit(p.getUniqueId());
+        if (playerKit == KitManager.Kit.FIGHTER) {
+            registerSkillUsage(p, "fighter_combo");
+        }
+
+        RecentSkillSnapshot recentSkill = getRecentSkillSnapshot(p.getUniqueId(), playerKit);
+
         double dodgeChance = rageMode ? 0.30 : (seriousMode ? 0.50 : (interestMode ? 0.30 : 0.10));
         double counterChance = rageMode ? 0.55 : (seriousMode ? 0.35 : (interestMode ? 0.25 : 0.15));
+
+        if (recentSkill != null) {
+            int tier = recentSkill.info.adaptationTier;
+            String skill = recentSkill.skillName;
+
+            if (tier <= 0) {
+                if ("gravity_crush".equals(skill) || "levitation_strike".equals(skill)
+                        || "archer_rain".equals(skill)
+                        || "berserk".equals(skill)
+                        || "ritual_cut".equals(skill)
+                        || "circle_trance".equals(skill)
+                        || "fighter_combo".equals(skill)) {
+                    dodgeChance = 0.0;
+                    counterChance = 0.0;
+                }
+            } else {
+                double scale = switch (tier) {
+                    case 1 -> 0.45;
+                    case 2 -> 0.80;
+                    default -> 1.10;
+                };
+                dodgeChance *= scale;
+                counterChance *= scale;
+            }
+        }
+
+        dodgeChance = Math.max(0.0, Math.min(0.85, dodgeChance));
+        counterChance = Math.max(0.0, Math.min(0.90, counterChance));
 
         // Шанс уворота
         if (rng.nextDouble() < dodgeChance) {
@@ -1326,6 +1522,157 @@ public class BossDuelManager implements Listener {
         return players.stream()
                 .min(java.util.Comparator.comparingDouble(Player::getHealth))
                 .orElse(null);
+    }
+
+    private boolean checkFastHitAntiCheat(Player player, Zombie boss, EntityDamageByEntityEvent e) {
+        UUID playerId = player.getUniqueId();
+        long now = System.currentTimeMillis();
+
+        Long prev = antiCheatLastHitAt.put(playerId, now);
+        int score = antiCheatFastHitScore.getOrDefault(playerId, 0);
+
+        if (prev != null) {
+            long delta = now - prev;
+
+            if (delta > 0 && delta <= FAST_HIT_MIN_INTERVAL_MS) {
+                score += 3;
+            } else if (delta <= FAST_HIT_MID_INTERVAL_MS) {
+                score += 2;
+            } else if (delta <= 280L) {
+                score += 1;
+            } else {
+                score = Math.max(0, score - 2);
+            }
+        }
+
+        if (score >= FAST_HIT_TRIGGER_SCORE) {
+            boolean punished = punishCheatLikeBehavior(player, boss, "Слишком быстрые удары");
+            e.setCancelled(true);
+            antiCheatFastHitScore.put(playerId, punished ? 0 : FAST_HIT_TRIGGER_SCORE - 2);
+            return true;
+        }
+
+        antiCheatFastHitScore.put(playerId, score);
+        return false;
+    }
+
+    private void checkMovementAntiCheat(Player player, Location from, Location to) {
+        if (!active || stage != Stage.FIGHT)
+            return;
+        if (player == null || from == null || to == null)
+            return;
+        if (from.getWorld() == null || to.getWorld() == null)
+            return;
+        if (!from.getWorld().getUID().equals(to.getWorld().getUID()))
+            return;
+
+        UUID playerId = player.getUniqueId();
+        MovementPatternState state = antiCheatMovement.computeIfAbsent(playerId, id -> new MovementPatternState());
+        long now = System.currentTimeMillis();
+
+        Vector horizontalDelta = to.toVector().subtract(from.toVector());
+        horizontalDelta.setY(0);
+        double moveSq = horizontalDelta.lengthSquared();
+
+        if (moveSq < 0.008) {
+            if (state.lastMoveAt > 0 && now - state.lastMoveAt > 700L) {
+                state.zigZagScore = Math.max(0, state.zigZagScore - 1);
+            }
+            return;
+        }
+
+        if (moveSq > 3.5) {
+            state.lastDirection = null;
+            state.lastMoveAt = now;
+            state.zigZagScore = Math.max(0, state.zigZagScore - 2);
+            return;
+        }
+
+        Vector direction = horizontalDelta.normalize();
+        long deltaTime = (state.lastMoveAt > 0) ? (now - state.lastMoveAt) : Long.MAX_VALUE;
+
+        if (state.lastDirection != null) {
+            double dot = direction.dot(state.lastDirection);
+
+            if (dot < -0.55 && deltaTime <= 330L) {
+                state.zigZagScore += 3;
+            } else if (dot < -0.25 && deltaTime <= 260L) {
+                state.zigZagScore += 2;
+            } else {
+                state.zigZagScore = Math.max(0, state.zigZagScore - 1);
+            }
+        } else {
+            state.zigZagScore = Math.max(0, state.zigZagScore - 1);
+        }
+
+        if (deltaTime > 500L) {
+            state.zigZagScore = Math.max(0, state.zigZagScore - 1);
+        }
+
+        state.lastDirection = direction.clone();
+        state.lastMoveAt = now;
+
+        if (state.zigZagScore >= ZIGZAG_TRIGGER_SCORE) {
+            Zombie boss = getBoss();
+            boolean punished = punishCheatLikeBehavior(player, boss, "Подозрительные рывки туда-сюда");
+            state.zigZagScore = punished ? 0 : ZIGZAG_TRIGGER_SCORE - 2;
+        }
+    }
+
+    private boolean punishCheatLikeBehavior(Player player, Zombie boss, String reason) {
+        if (player == null || !player.isOnline())
+            return false;
+
+        UUID playerId = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        long lastPunish = antiCheatPunishCooldown.getOrDefault(playerId, 0L);
+        if (now - lastPunish < ANTI_CHEAT_PUNISH_COOLDOWN_MS) {
+            return false;
+        }
+        antiCheatPunishCooldown.put(playerId, now);
+
+        player.setSprinting(false);
+        long debuffEnd = now + 1600L;
+        playerDebuffExpiry.put(playerId, debuffEnd);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> playerDebuffExpiry.remove(playerId), 32L);
+
+        player.setWalkSpeed(0.12f);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline() && isDuelPlayer(player.getUniqueId())) {
+                player.setWalkSpeed(0.2f);
+            }
+        }, 20L);
+
+        Vector knockbackDirection;
+        if (boss != null && !boss.isDead()) {
+            knockbackDirection = player.getLocation().toVector().subtract(boss.getLocation().toVector());
+        } else {
+            knockbackDirection = player.getLocation().getDirection().multiply(-1);
+        }
+
+        knockbackDirection.setY(0);
+        if (knockbackDirection.lengthSquared() < 0.0001) {
+            knockbackDirection = new Vector(0, 0, 1);
+        }
+        Vector velocity = knockbackDirection.normalize().multiply(1.15).setY(0.35);
+        player.setVelocity(velocity);
+
+        if (boss != null && !boss.isDead()) {
+            boss.setTarget(player);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!active || stage != Stage.FIGHT)
+                    return;
+                if (boss.isDead() || !player.isOnline())
+                    return;
+
+                teleportBossBehindPlayer(player, boss);
+                boss.attack(player);
+            }, 5L);
+        }
+
+        player.sendMessage("§c[Анти-чит босса] §7" + reason + ".");
+        sendBossMessage("Хитришь? Тогда держи.");
+        return true;
     }
 
     private void dodgeBossFromPlayer(Zombie boss, Player p) {
@@ -1663,7 +2010,7 @@ public class BossDuelManager implements Listener {
             }, 30L);
         }
 
-        ally.sendMessage("§eТы вошёл в дуэль как помощник! Помоги главному дуэлянту!");
+        ally.sendMessage("§eТы вошёл в дуэль как помощник! Помоги главному ритуалисту!");
         main.sendMessage("§eПомощник прибыл!");
 
         return true;
@@ -1707,16 +2054,21 @@ public class BossDuelManager implements Listener {
     }
 
     private void applyCinematicSummon(Player ally, Location safeLoc) {
-        // Teleport ally
-        ally.teleport(safeLoc);
+        internalTeleport = true;
+        try {
+            // Teleport ally
+            ally.teleport(safeLoc, PlayerTeleportEvent.TeleportCause.PLUGIN);
 
-        // Face boss
-        if (duelCenter != null) {
-            Vector towardsBoss = duelCenter.toVector().subtract(safeLoc.toVector()).normalize();
-            float yaw = (float) Math.atan2(-towardsBoss.getX(), towardsBoss.getZ());
-            Location lookLoc = safeLoc.clone();
-            lookLoc.setYaw(yaw * 180 / (float) Math.PI);
-            ally.teleport(lookLoc);
+            // Face boss
+            if (duelCenter != null) {
+                Vector towardsBoss = duelCenter.toVector().subtract(safeLoc.toVector()).normalize();
+                float yaw = (float) Math.atan2(-towardsBoss.getX(), towardsBoss.getZ());
+                Location lookLoc = safeLoc.clone();
+                lookLoc.setYaw(yaw * 180 / (float) Math.PI);
+                ally.teleport(lookLoc, PlayerTeleportEvent.TeleportCause.PLUGIN);
+            }
+        } finally {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> internalTeleport = false, 2L);
         }
 
         // Freeze for 1 second (cinematic entrance)
@@ -1823,123 +2175,372 @@ public class BossDuelManager implements Listener {
             if (!active || stage != Stage.FIGHT)
                 return;
             checkPlayerSkillUsage();
-        }, 20L, 5L); // Check every 0.25 seconds
+        }, 20L, 10L);
     }
 
     public void registerSkillUsage(Player player, String skillName) {
+        if (player == null || skillName == null || skillName.isBlank())
+            return;
+        if (!active || stage != Stage.FIGHT)
+            return;
         if (!isDuelPlayer(player.getUniqueId()))
             return;
 
+        String normalizedSkill = skillName.toLowerCase(Locale.ROOT);
         UUID playerUuid = player.getUniqueId();
         playerSkillTracking.putIfAbsent(playerUuid, new HashMap<>());
 
         Map<String, SkillUsageInfo> playerSkills = playerSkillTracking.get(playerUuid);
-        SkillUsageInfo info = playerSkills.getOrDefault(skillName, new SkillUsageInfo());
+        SkillUsageInfo info = playerSkills.computeIfAbsent(normalizedSkill, k -> new SkillUsageInfo());
 
         long now = System.currentTimeMillis();
-        boolean isFirstUse = !info.commentedFirstUse;
-        boolean isSpam = info.lastUseTime > 0 && (now - info.lastUseTime) < 3000; // 3 sec cooldown
+        long learnInterval = getLearningIntervalMs(normalizedSkill);
+        if (info.lastUseTime == 0L || now - info.lastUseTime >= learnInterval) {
+            info.useCount++;
+        }
 
         info.lastUseTime = now;
-        info.useCount++;
-        playerSkills.put(skillName, info);
 
-        // Get player kit
-        KitManager.Kit playerKit = plugin.progress().getSavedKit(playerUuid);
+        int prevTier = info.adaptationTier;
+        int nextTier = resolveAdaptationTier(normalizedSkill, info.useCount);
+        info.adaptationTier = nextTier;
 
-        // Boss comments on skill usage
-        if (isFirstUse) {
-            info.commentedFirstUse = true;
-            commentFirstSkillUse(player, skillName, playerKit);
-        } else if (isSpam && info.useCount > 1) {
-            commentSkillSpam(player, skillName, playerKit);
+        if (nextTier > prevTier && nextTier > info.lastAnnouncedTier) {
+            info.lastAnnouncedTier = nextTier;
+            announceAdaptationTierUp(player);
         }
 
-        // Counter mechanics based on kit
-        if (isSpam) {
-            applySkillCounterMechanic(player, skillName, playerKit);
-        }
+        KitManager.Kit playerKit = plugin.kit().getKit(playerUuid);
+        applySkillCounterMechanic(player, normalizedSkill, playerKit, info, now);
     }
 
-    private void commentFirstSkillUse(Player player, String skillName, KitManager.Kit kit) {
+    private void announceAdaptationTierUp(Player player) {
+        long now = System.currentTimeMillis();
+        long lastComment = skillCommentCooldown.getOrDefault(player.getUniqueId(), 0L);
+        if (now - lastComment < 4000L) {
+            return;
+        }
+        skillCommentCooldown.put(player.getUniqueId(), now);
         sendSkillAdaptationMessage();
     }
 
-    private void commentSkillSpam(Player player, String skillName, KitManager.Kit kit) {
-        // Check cooldown for spam comments (don't spam chat)
-        Long lastComment = skillCommentCooldown.getOrDefault(player.getUniqueId(), 0L);
-        if (System.currentTimeMillis() - lastComment < 5000)
-            return; // 5 sec cooldown between comments
-
-        skillCommentCooldown.put(player.getUniqueId(), System.currentTimeMillis());
-        sendSkillAdaptationMessage();
+    private long getLearningIntervalMs(String skillName) {
+        return switch (skillName) {
+            case "gravity_crush" -> 2000L;
+            case "levitation_strike" -> 1800L;
+            case "archer_rain" -> 1400L;
+            case "berserk" -> 3500L;
+            case "ritual_cut", "circle_trance" -> 1500L;
+            case "fighter_combo" -> 1250L;
+            default -> 1600L;
+        };
     }
 
-    private void applySkillCounterMechanic(Player player, String skillName, KitManager.Kit kit) {
+    private int resolveAdaptationTier(String skillName, int useCount) {
+        int tier1;
+        int tier2;
+        int tier3;
+
+        switch (skillName) {
+            case "gravity_crush" -> {
+                tier1 = 4;
+                tier2 = 8;
+                tier3 = 12;
+            }
+            case "levitation_strike" -> {
+                tier1 = 3;
+                tier2 = 6;
+                tier3 = 9;
+            }
+            case "archer_rain" -> {
+                tier1 = 3;
+                tier2 = 5;
+                tier3 = 8;
+            }
+            case "berserk" -> {
+                tier1 = 2;
+                tier2 = 3;
+                tier3 = 5;
+            }
+            case "ritual_cut", "circle_trance" -> {
+                tier1 = 3;
+                tier2 = 6;
+                tier3 = 9;
+            }
+            case "fighter_combo" -> {
+                tier1 = 6;
+                tier2 = 12;
+                tier3 = 18;
+            }
+            default -> {
+                tier1 = 4;
+                tier2 = 8;
+                tier3 = 12;
+            }
+        }
+
+        if (useCount >= tier3)
+            return 3;
+        if (useCount >= tier2)
+            return 2;
+        if (useCount >= tier1)
+            return 1;
+        return 0;
+    }
+
+    private long getCounterCooldownMs(String skillName, int tier) {
+        long base = switch (skillName) {
+            case "gravity_crush" -> 3200L;
+            case "levitation_strike" -> 3400L;
+            case "archer_rain" -> 2800L;
+            case "berserk" -> 4200L;
+            case "ritual_cut" -> 3000L;
+            case "circle_trance" -> 3400L;
+            case "fighter_combo" -> 2400L;
+            default -> 3200L;
+        };
+
+        int tierOffset = Math.max(0, tier - 1);
+        return Math.max(1000L, base - tierOffset * 500L);
+    }
+
+    private double getCounterChance(String skillName, int tier) {
+        return switch (skillName) {
+            case "gravity_crush" -> (tier == 1 ? 0.16 : (tier == 2 ? 0.38 : 0.65));
+            case "levitation_strike" -> (tier == 1 ? 0.12 : (tier == 2 ? 0.30 : 0.55));
+            case "archer_rain" -> (tier == 1 ? 0.18 : (tier == 2 ? 0.40 : 0.68));
+            case "berserk" -> (tier == 1 ? 0.12 : (tier == 2 ? 0.26 : 0.48));
+            case "ritual_cut" -> (tier == 1 ? 0.14 : (tier == 2 ? 0.32 : 0.56));
+            case "circle_trance" -> (tier == 1 ? 0.10 : (tier == 2 ? 0.28 : 0.50));
+            case "fighter_combo" -> (tier == 1 ? 0.08 : (tier == 2 ? 0.22 : 0.42));
+            default -> (tier == 1 ? 0.12 : (tier == 2 ? 0.26 : 0.45));
+        };
+    }
+
+    private void applySkillCounterMechanic(Player player, String skillName, KitManager.Kit kit, SkillUsageInfo info,
+            long now) {
         Zombie boss = getBoss();
         if (boss == null || boss.isDead())
             return;
 
-        long now = System.currentTimeMillis();
-        if (now - lastForceSeparationTime < 5000)
-            return; // Don't spam counters
+        int tier = info.adaptationTier;
+        if (tier <= 0)
+            return;
 
-        switch (kit) {
-            case GRAVITATOR -> {
-                // Gravitator uses gravity/slowness → Boss increases dodge chance and teleports
-                // away
-                if (rng.nextDouble() < 0.7) {
+        long cooldownMs = getCounterCooldownMs(skillName, tier);
+        if (now - info.lastCounterTime < cooldownMs)
+            return;
+
+        double chance = getCounterChance(skillName, tier);
+        if (rng.nextDouble() >= chance)
+            return;
+
+        boolean triggered = false;
+
+        switch (skillName) {
+            case "gravity_crush" -> {
+                if (tier == 1) {
+                    backstepFromPlayer(boss, player);
+                } else if (tier == 2) {
                     dodgeBossFromPlayer(boss, player);
+                } else {
+                    dodgeBossFromPlayer(boss, player);
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!active || stage != Stage.FIGHT)
+                            return;
+                        if (boss.isDead() || !player.isOnline())
+                            return;
+                        teleportBossBehindPlayer(player, boss);
+                        boss.attack(player);
+                    }, 6L);
                 }
+                triggered = true;
             }
 
-            case ARCHER -> {
-                // Archer uses ranged attacks → Boss teleports to archer and attacks
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    if (!active || stage != Stage.FIGHT)
-                        return;
-                    if (boss.isDead() || !player.isOnline())
-                        return;
-
-                    teleportBossBehindPlayer(player, boss);
-                    boss.attack(player);
-                }, 5L);
+            case "levitation_strike" -> {
+                if (tier == 1) {
+                    backstepFromPlayer(boss, player);
+                } else if (tier == 2) {
+                    dodgeBossFromPlayer(boss, player);
+                } else {
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!active || stage != Stage.FIGHT)
+                            return;
+                        if (boss.isDead() || !player.isOnline())
+                            return;
+                        teleportBossBehindPlayer(player, boss);
+                        boss.attack(player);
+                    }, 4L);
+                }
+                triggered = true;
             }
 
-            case BERSERK -> {
-                // Berserk rushes in → Boss applies knockback and repositions
+            case "archer_rain" -> {
+                if (tier == 1) {
+                    backstepFromPlayer(boss, player);
+                } else {
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!active || stage != Stage.FIGHT)
+                            return;
+                        if (boss.isDead() || !player.isOnline())
+                            return;
+                        teleportBossBehindPlayer(player, boss);
+                        if (tier >= 3) {
+                            boss.attack(player);
+                        }
+                    }, 5L);
+                }
+                triggered = true;
+            }
+
+            case "berserk" -> {
                 Vector awayFromBoss = player.getLocation().toVector()
                         .subtract(boss.getLocation().toVector())
-                        .normalize()
-                        .multiply(1.8);
-                awayFromBoss.setY(0.3);
-                player.setVelocity(awayFromBoss);
+                        .setY(0.0);
+                if (awayFromBoss.lengthSquared() < 0.0001) {
+                    awayFromBoss = player.getLocation().getDirection().multiply(-1).setY(0.0);
+                }
+                if (awayFromBoss.lengthSquared() < 0.0001) {
+                    awayFromBoss = new Vector(0, 0, 1);
+                }
+                double power = 1.1 + (tier * 0.35);
+                player.setVelocity(awayFromBoss.normalize().multiply(power).setY(0.22 + tier * 0.05));
+                if (tier >= 3) {
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!active || stage != Stage.FIGHT)
+                            return;
+                        if (boss.isDead() || !player.isOnline())
+                            return;
+                        boss.attack(player);
+                    }, 4L);
+                }
+                triggered = true;
             }
 
-            case FIGHTER -> {
-                // Fighter uses melee combos → Boss backsteps and keeps distance
-                backstepFromPlayer(boss, player);
+            case "ritual_cut", "circle_trance" -> {
+                if (tier == 1) {
+                    backstepFromPlayer(boss, player);
+                } else if (tier == 2) {
+                    dodgeBossFromPlayer(boss, player);
+                } else {
+                    backstepFromPlayer(boss, player);
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!active || stage != Stage.FIGHT)
+                            return;
+                        if (boss.isDead() || !player.isOnline())
+                            return;
+                        teleportBossBehindPlayer(player, boss);
+                        boss.attack(player);
+                    }, 6L);
+                }
+                triggered = true;
             }
 
-            case MINER -> {
-                // Miner uses mining-related skills → Boss ignores and continues
-                // No specific counter, just comment
-            }
-
-            case BUILDER -> {
-                // Builder uses structures → Boss destroys them or ignores
+            case "fighter_combo" -> {
+                if (tier == 1) {
+                    backstepFromPlayer(boss, player);
+                } else {
+                    dodgeBossFromPlayer(boss, player);
+                    if (tier >= 3) {
+                        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                            if (!active || stage != Stage.FIGHT)
+                                return;
+                            if (boss.isDead() || !player.isOnline())
+                                return;
+                            boss.attack(player);
+                        }, 3L);
+                    }
+                }
+                triggered = true;
             }
         }
 
-        lastForceSeparationTime = now;
+        if (!triggered) {
+            switch (kit) {
+                case GRAVITATOR -> {
+                    dodgeBossFromPlayer(boss, player);
+                    triggered = true;
+                }
+                case ARCHER, FIGHTER, DUELIST, CLONER, SUMMONER -> {
+                    backstepFromPlayer(boss, player);
+                    triggered = true;
+                }
+                case BERSERK -> {
+                    player.setVelocity(player.getLocation().getDirection().multiply(-1.2).setY(0.28));
+                    triggered = true;
+                }
+                default -> {
+                }
+            }
+        }
+
+        if (triggered) {
+            info.lastCounterTime = now;
+        }
+    }
+
+    private RecentSkillSnapshot getRecentSkillSnapshot(UUID playerUuid, KitManager.Kit kit) {
+        Map<String, SkillUsageInfo> skills = playerSkillTracking.get(playerUuid);
+        if (skills == null || skills.isEmpty())
+            return null;
+
+        long now = System.currentTimeMillis();
+        RecentSkillSnapshot best = null;
+        for (String trackedSkill : getTrackedSkillsForKit(kit)) {
+            SkillUsageInfo info = skills.get(trackedSkill);
+            if (info == null)
+                continue;
+            long recentWindow = getRecentSkillWindowMs(trackedSkill);
+            if (now - info.lastUseTime > recentWindow)
+                continue;
+
+            if (best == null || info.lastUseTime > best.info.lastUseTime) {
+                best = new RecentSkillSnapshot(trackedSkill, info);
+            }
+        }
+        return best;
+    }
+
+    private long getRecentSkillWindowMs(String skillName) {
+        return switch (skillName) {
+            case "gravity_crush" -> 20_000L;
+            case "berserk" -> 12_000L;
+            default -> RECENT_SKILL_WINDOW_MS;
+        };
+    }
+
+    private String[] getTrackedSkillsForKit(KitManager.Kit kit) {
+        if (kit == null)
+            return new String[0];
+
+        return switch (kit) {
+            case FIGHTER -> new String[] { "fighter_combo" };
+            case ARCHER -> new String[] { "archer_rain" };
+            case BERSERK -> new String[] { "berserk" };
+            case GRAVITATOR -> new String[] { "gravity_crush", "levitation_strike" };
+            case DUELIST -> new String[] { "ritual_cut", "circle_trance" };
+            case CLONER -> new String[] { "clone_summon" };
+            case SUMMONER -> new String[] { "summoner_wolves", "summoner_phantom", "summoner_golem", "summoner_vex" };
+            case MINER, BUILDER -> new String[0];
+        };
     }
 
     private void checkPlayerSkillUsage() {
-        // Cleanup old skill tracking (more than 30 seconds of no usage)
         long now = System.currentTimeMillis();
+
         for (UUID playerUuid : new ArrayList<>(playerSkillTracking.keySet())) {
             Map<String, SkillUsageInfo> skills = playerSkillTracking.get(playerUuid);
-            skills.entrySet().removeIf(entry -> (now - entry.getValue().lastUseTime) > 30000);
+            if (skills == null) {
+                playerSkillTracking.remove(playerUuid);
+                continue;
+            }
+
+            skills.entrySet().removeIf(entry -> (now - entry.getValue().lastUseTime) > SKILL_TRACKING_FORGET_MS);
+            if (skills.isEmpty()) {
+                playerSkillTracking.remove(playerUuid);
+            }
         }
+
+        skillCommentCooldown.entrySet().removeIf(entry -> (now - entry.getValue()) > SKILL_TRACKING_FORGET_MS);
     }
 }

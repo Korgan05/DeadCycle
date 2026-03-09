@@ -35,6 +35,13 @@ public class PlayerDataStore {
         data.set(uuid + "." + path, val);
     }
 
+    public void clearAll() {
+        for (String key : data.getKeys(false)) {
+            data.set(key, null);
+        }
+        save();
+    }
+
     public void save() {
         try {
             data.save(file);

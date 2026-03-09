@@ -80,7 +80,9 @@ public class DcCommand implements CommandExecutor {
                     + ChatColor.GRAY + ", "
                     + ChatColor.YELLOW + "/dc stat <ник>"
                     + ChatColor.GRAY + ", "
-                    + ChatColor.YELLOW + "/dc setstat <ник> <ключ> <значение>");
+                    + ChatColor.YELLOW + "/dc setstat <ник> <ключ> <значение>"
+                    + ChatColor.GRAY + ", "
+                    + ChatColor.YELLOW + "/dc anime <grant|clear|info|setlvl|giveitems> ...");
             return true;
         }
 
@@ -142,8 +144,10 @@ public class DcCommand implements CommandExecutor {
                 var progress = plugin.progress();
                 var mana = plugin.mana();
 
-                sender.sendMessage(ChatColor.DARK_AQUA + "=== [DC STAT] " + ChatColor.AQUA + name + ChatColor.DARK_AQUA + " ===");
-                sender.sendMessage(ChatColor.GRAY + "Онлайн: " + (target.isOnline() ? ChatColor.GREEN + "да" : ChatColor.RED + "нет"));
+                sender.sendMessage(
+                        ChatColor.DARK_AQUA + "=== [DC STAT] " + ChatColor.AQUA + name + ChatColor.DARK_AQUA + " ===");
+                sender.sendMessage(ChatColor.GRAY + "Онлайн: "
+                        + (target.isOnline() ? ChatColor.GREEN + "да" : ChatColor.RED + "нет"));
                 sender.sendMessage(ChatColor.GRAY + "Деньги: " + ChatColor.GOLD + plugin.econ().getMoney(uuid));
 
                 sender.sendMessage(ChatColor.GRAY + "Player Lvl/XP: " + ChatColor.WHITE + progress.getPlayerLevel(uuid)
@@ -156,7 +160,10 @@ public class DcCommand implements CommandExecutor {
                         + ", builder=" + progress.getBuilderLevel(uuid)
                         + ", berserk=" + progress.getBerserkLevel(uuid)
                         + ", archer=" + progress.getArcherLevel(uuid)
-                        + ", gravitator=" + progress.getGravitatorLevel(uuid));
+                        + ", gravitator=" + progress.getGravitatorLevel(uuid)
+                        + ", ritualist=" + progress.getDuelistLevel(uuid)
+                        + ", cloner=" + progress.getClonerLevel(uuid)
+                        + ", summoner=" + progress.getSummonerLevel(uuid));
 
                 if (target.isOnline() && target.getPlayer() != null) {
                     Player online = target.getPlayer();
@@ -166,7 +173,8 @@ public class DcCommand implements CommandExecutor {
                     if (attr != null)
                         hpMax = attr.getValue();
 
-                    sender.sendMessage(ChatColor.GRAY + "HP: " + ChatColor.WHITE + String.format(Locale.US, "%.1f/%.1f", hp, hpMax));
+                    sender.sendMessage(ChatColor.GRAY + "HP: " + ChatColor.WHITE
+                            + String.format(Locale.US, "%.1f/%.1f", hp, hpMax));
                     sender.sendMessage(ChatColor.GRAY + "Мана XP: " + ChatColor.WHITE + mana.getCurrentXp(online)
                             + ChatColor.GRAY + "/" + ChatColor.WHITE + mana.getMaxXp(uuid));
                 } else {
@@ -174,10 +182,14 @@ public class DcCommand implements CommandExecutor {
                 }
 
                 sender.sendMessage(ChatColor.DARK_GRAY + "--- Special Skills ---");
-                sender.sendMessage(ChatColor.GRAY + "Потеряно HP (damage_taken): " + ChatColor.WHITE + special.getDamageTaken(uuid));
-                sender.sendMessage(ChatColor.GRAY + "Нанесено урона (damage_dealt): " + ChatColor.WHITE + special.getDamageDealt(uuid));
-                sender.sendMessage(ChatColor.GRAY + "Выхилено HP (heal_with_regen): " + ChatColor.WHITE + special.getHealWithRegen(uuid));
-                sender.sendMessage(ChatColor.GRAY + "Потрачено маны (mana_spent): " + ChatColor.WHITE + special.getManaSpent(uuid));
+                sender.sendMessage(ChatColor.GRAY + "Потеряно HP (damage_taken): " + ChatColor.WHITE
+                        + special.getDamageTaken(uuid));
+                sender.sendMessage(ChatColor.GRAY + "Нанесено урона (damage_dealt): " + ChatColor.WHITE
+                        + special.getDamageDealt(uuid));
+                sender.sendMessage(ChatColor.GRAY + "Выхилено HP (heal_with_regen): " + ChatColor.WHITE
+                        + special.getHealWithRegen(uuid));
+                sender.sendMessage(ChatColor.GRAY + "Потрачено маны (mana_spent): " + ChatColor.WHITE
+                        + special.getManaSpent(uuid));
                 sender.sendMessage(ChatColor.GRAY + "Срабатывания: " + ChatColor.WHITE
                         + "regen=" + special.getRegenProcCount(uuid)
                         + ", auto_regen=" + special.getAutoRegenProcCount(uuid)
@@ -200,7 +212,8 @@ public class DcCommand implements CommandExecutor {
                         + String.format(Locale.US, "%.2f", special.getRegenAccumulator(uuid))
                         + ChatColor.GRAY + " | auto_regen_acc=" + ChatColor.WHITE
                         + String.format(Locale.US, "%.2f", special.getAutoRegenAccumulator(uuid))
-                        + ChatColor.GRAY + " | last_tick=" + ChatColor.WHITE + formatLastTick(special.getLastSkillTickAt(uuid)));
+                        + ChatColor.GRAY + " | last_tick=" + ChatColor.WHITE
+                        + formatLastTick(special.getLastSkillTickAt(uuid)));
                 return true;
             }
 
@@ -211,8 +224,10 @@ public class DcCommand implements CommandExecutor {
                 }
                 if (args.length < 4) {
                     sender.sendMessage(ChatColor.YELLOW + "Используй: /dc setstat <ник> <ключ> <значение>");
-                    sender.sendMessage(ChatColor.GRAY + "Ключи special: " + plugin.specialSkills().getSupportedSetStatKeys());
-                    sender.sendMessage(ChatColor.GRAY + "Доп. ключи: money, player_level, player_exp, mana_max, mana_current");
+                    sender.sendMessage(
+                            ChatColor.GRAY + "Ключи special: " + plugin.specialSkills().getSupportedSetStatKeys());
+                    sender.sendMessage(
+                            ChatColor.GRAY + "Доп. ключи: money, player_level, player_exp, mana_max, mana_current");
                     return true;
                 }
 
@@ -271,8 +286,10 @@ public class DcCommand implements CommandExecutor {
 
                 if (!applied) {
                     sender.sendMessage(ChatColor.RED + "Неизвестный ключ: " + stat);
-                    sender.sendMessage(ChatColor.GRAY + "Ключи special: " + plugin.specialSkills().getSupportedSetStatKeys());
-                    sender.sendMessage(ChatColor.GRAY + "Доп. ключи: money, player_level, player_exp, mana_max, mana_current");
+                    sender.sendMessage(
+                            ChatColor.GRAY + "Ключи special: " + plugin.specialSkills().getSupportedSetStatKeys());
+                    sender.sendMessage(
+                            ChatColor.GRAY + "Доп. ключи: money, player_level, player_exp, mana_max, mana_current");
                     return true;
                 }
 
@@ -397,6 +414,10 @@ public class DcCommand implements CommandExecutor {
                 return true;
             }
 
+            case "anime" -> {
+                return handleAnime(sender, args);
+            }
+
             case "boss" -> {
                 if (!(sender instanceof Player p)) {
                     sender.sendMessage("Only players.");
@@ -433,6 +454,182 @@ public class DcCommand implements CommandExecutor {
 
             default -> {
                 return false; // покажет usage из plugin.yml
+            }
+        }
+    }
+
+    private boolean handleAnime(CommandSender sender, String[] args) {
+        if (!isAdmin(sender)) {
+            sender.sendMessage(ChatColor.RED + "Нет прав.");
+            return true;
+        }
+
+        if (plugin.animePowers() == null) {
+            sender.sendMessage(ChatColor.RED + "Система anime powers не инициализирована.");
+            return true;
+        }
+
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.YELLOW + "Используй: /dc anime <grant|clear|info|setlvl|giveitems> ...");
+            return true;
+        }
+
+        String sub = args[1].toLowerCase(Locale.ROOT);
+
+        switch (sub) {
+            case "grant" -> {
+                if (args.length < 4) {
+                    sender.sendMessage(ChatColor.YELLOW + "Используй: /dc anime grant <ник> <gojo|sukuna> [уровень]");
+                    return true;
+                }
+
+                OfflinePlayer target = resolveTarget(args[2]);
+                if (target == null) {
+                    sender.sendMessage(ChatColor.RED + "Игрок не найден: " + args[2]);
+                    return true;
+                }
+
+                int level = 1;
+                if (args.length >= 5) {
+                    try {
+                        level = Integer.parseInt(args[4]);
+                    } catch (NumberFormatException ex) {
+                        sender.sendMessage(ChatColor.RED + "Неверный уровень: " + args[4]);
+                        return true;
+                    }
+                }
+
+                boolean ok = plugin.animePowers().grantPower(target.getUniqueId(), args[3], level);
+                if (!ok) {
+                    sender.sendMessage(
+                            ChatColor.RED + "Неизвестный класс anime: " + args[3] + " (ожидается gojo/sukuna)");
+                    return true;
+                }
+
+                Player online = Bukkit.getPlayer(target.getUniqueId());
+                if (online != null) {
+                    plugin.animePowers().syncItems(online);
+                    online.sendMessage(ChatColor.LIGHT_PURPLE + "Тебе выдана anime-сила: "
+                            + plugin.animePowers().getPowerClassDisplay(target.getUniqueId()));
+                }
+
+                String targetName = target.getName() != null ? target.getName() : args[2];
+                sender.sendMessage(
+                        ChatColor.GREEN + "Выдано: " + plugin.animePowers().getPowerClassDisplay(target.getUniqueId())
+                                + ChatColor.GREEN + " игроку " + ChatColor.WHITE + targetName
+                                + ChatColor.GREEN + " (уровень " + ChatColor.WHITE
+                                + plugin.animePowers().getPowerLevel(target.getUniqueId()) + ChatColor.GREEN + ")");
+                if (online == null) {
+                    sender.sendMessage(ChatColor.GRAY + "Игрок офлайн: предметы будут выданы при входе.");
+                }
+                return true;
+            }
+
+            case "clear" -> {
+                if (args.length < 3) {
+                    sender.sendMessage(ChatColor.YELLOW + "Используй: /dc anime clear <ник>");
+                    return true;
+                }
+
+                OfflinePlayer target = resolveTarget(args[2]);
+                if (target == null) {
+                    sender.sendMessage(ChatColor.RED + "Игрок не найден: " + args[2]);
+                    return true;
+                }
+
+                plugin.animePowers().clearPower(target.getUniqueId());
+
+                Player online = Bukkit.getPlayer(target.getUniqueId());
+                if (online != null) {
+                    plugin.animePowers().syncItems(online);
+                    online.sendMessage(ChatColor.GRAY + "Твоя anime-сила снята админом.");
+                }
+
+                String targetName = target.getName() != null ? target.getName() : args[2];
+                sender.sendMessage(ChatColor.GREEN + "Anime-сила снята с " + ChatColor.WHITE + targetName);
+                return true;
+            }
+
+            case "info" -> {
+                if (args.length < 3) {
+                    sender.sendMessage(ChatColor.YELLOW + "Используй: /dc anime info <ник>");
+                    return true;
+                }
+
+                OfflinePlayer target = resolveTarget(args[2]);
+                if (target == null) {
+                    sender.sendMessage(ChatColor.RED + "Игрок не найден: " + args[2]);
+                    return true;
+                }
+
+                UUID uuid = target.getUniqueId();
+                String targetName = target.getName() != null ? target.getName() : args[2];
+
+                sender.sendMessage(ChatColor.DARK_AQUA + "=== [ANIME POWER] " + ChatColor.AQUA + targetName
+                        + ChatColor.DARK_AQUA + " ===");
+                sender.sendMessage(ChatColor.GRAY + "Класс: " + plugin.animePowers().getPowerClassDisplay(uuid));
+                sender.sendMessage(
+                        ChatColor.GRAY + "Уровень: " + ChatColor.WHITE + plugin.animePowers().getPowerLevel(uuid));
+                sender.sendMessage(ChatColor.GRAY + "Опыт: " + ChatColor.WHITE + plugin.animePowers().getPowerExp(uuid)
+                        + ChatColor.GRAY + "/" + ChatColor.WHITE + plugin.animePowers().getNeedExp(uuid));
+                return true;
+            }
+
+            case "setlvl" -> {
+                if (args.length < 4) {
+                    sender.sendMessage(ChatColor.YELLOW + "Используй: /dc anime setlvl <ник> <уровень>");
+                    return true;
+                }
+
+                OfflinePlayer target = resolveTarget(args[2]);
+                if (target == null) {
+                    sender.sendMessage(ChatColor.RED + "Игрок не найден: " + args[2]);
+                    return true;
+                }
+
+                int level;
+                try {
+                    level = Integer.parseInt(args[3]);
+                } catch (NumberFormatException ex) {
+                    sender.sendMessage(ChatColor.RED + "Неверный уровень: " + args[3]);
+                    return true;
+                }
+
+                plugin.animePowers().setPowerLevel(target.getUniqueId(), level);
+
+                Player online = Bukkit.getPlayer(target.getUniqueId());
+                if (online != null) {
+                    plugin.animePowers().syncItems(online);
+                    online.sendMessage(ChatColor.LIGHT_PURPLE + "Твой уровень anime-силы изменён: "
+                            + plugin.animePowers().getPowerLevel(target.getUniqueId()));
+                }
+
+                sender.sendMessage(ChatColor.GREEN + "Уровень anime-силы установлен на "
+                        + ChatColor.WHITE + plugin.animePowers().getPowerLevel(target.getUniqueId()));
+                return true;
+            }
+
+            case "giveitems" -> {
+                if (args.length < 3) {
+                    sender.sendMessage(ChatColor.YELLOW + "Используй: /dc anime giveitems <ник>");
+                    return true;
+                }
+
+                Player target = Bukkit.getPlayer(args[2]);
+                if (target == null) {
+                    sender.sendMessage(ChatColor.RED + "Игрок должен быть онлайн: " + args[2]);
+                    return true;
+                }
+
+                plugin.animePowers().syncItems(target);
+                sender.sendMessage(
+                        ChatColor.GREEN + "Предметы anime-силы выданы: " + ChatColor.WHITE + target.getName());
+                return true;
+            }
+
+            default -> {
+                sender.sendMessage(ChatColor.YELLOW + "Используй: /dc anime <grant|clear|info|setlvl|giveitems> ...");
+                return true;
             }
         }
     }

@@ -59,7 +59,7 @@ public class ArcherRainSkill implements Skill {
     }
 
     @Override
-    public int getXpCost(Player p) {
+    public double getManaCost(Player p) {
         return xpCost;
     }
 
@@ -78,7 +78,7 @@ public class ArcherRainSkill implements Skill {
         if (p == null || !p.isOnline())
             return false;
 
-        int cost = getXpCost(p);
+        int cost = (int) getManaCost(p);
         if (p.getLevel() < cost)
             return false;
 
@@ -90,7 +90,7 @@ public class ArcherRainSkill implements Skill {
         if (p == null || !p.isOnline())
             return "§cОшибка: игрок не в сети";
 
-        int cost = getXpCost(p);
+        int cost = (int) getManaCost(p);
         if (p.getLevel() < cost)
             return "§cНедостаточно опыта! Нужно: " + cost + ", есть: " + p.getLevel();
 
@@ -101,6 +101,11 @@ public class ArcherRainSkill implements Skill {
     public void activate(Player p) {
         if (p == null || !p.isOnline())
             return;
+
+        // Notifies boss that this skill is being used (for adaptation/counters)
+        if (plugin.bossDuel() != null) {
+            plugin.bossDuel().registerSkillUsage(p, "archer_rain");
+        }
 
         Location playerLoc = p.getLocation();
         if (playerLoc.getWorld() == null)

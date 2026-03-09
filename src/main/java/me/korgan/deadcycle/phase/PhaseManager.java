@@ -92,6 +92,8 @@ public class PhaseManager {
         bar.removeAll();
 
         plugin.zombie().stopNight();
+        if (plugin.miniBoss() != null)
+            plugin.miniBoss().stopNight();
         siege.stop();
         if (plugin.bossDuel() != null)
             plugin.bossDuel().forceEnd("phase_stop");
@@ -151,6 +153,20 @@ public class PhaseManager {
 
         // 8. Возвращаемся на День 1
         dayCount = 0;
+
+        if (plugin.bossDuel() != null) {
+            plugin.bossDuel().clearSkillAdaptationData();
+        }
+        if (plugin.miniBoss() != null) {
+            plugin.miniBoss().resetProgress();
+        }
+        if (plugin.cloneKit() != null) {
+            plugin.cloneKit().resetAll();
+        }
+        if (plugin.summonerKit() != null) {
+            plugin.summonerKit().resetAll();
+        }
+
         switchToDay(true);
 
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -162,6 +178,8 @@ public class PhaseManager {
         phase = Phase.DAY;
 
         plugin.zombie().stopNight();
+        if (plugin.miniBoss() != null)
+            plugin.miniBoss().stopNight();
         siege.stop();
         if (plugin.bossDuel() != null)
             plugin.bossDuel().forceEnd("night_end");
@@ -197,13 +215,6 @@ public class PhaseManager {
                 plugin.regenMining().restoreAllNowAtDayStart();
         } catch (Throwable ignored) {
         }
-
-        // Открываем ворота при наступлении дня
-        try {
-            if (plugin.gates() != null)
-                plugin.gates().onDayStart();
-        } catch (Throwable ignored) {
-        }
     }
 
     private void switchToNight() {
@@ -221,16 +232,11 @@ public class PhaseManager {
         bar.setColor(BarColor.PURPLE);
 
         plugin.zombie().startNight(dayCount);
+        if (plugin.miniBoss() != null)
+            plugin.miniBoss().startNight(dayCount);
 
         // осада стартует, если условия соблюдены (start_day, кто-то на базе и т.д.)
         siege.onNightStart(dayCount);
-
-        // Закрываем ворота на ночь
-        try {
-            if (plugin.gates() != null)
-                plugin.gates().onNightStart();
-        } catch (Throwable ignored) {
-        }
 
         if (plugin.bossDuel() != null)
             plugin.bossDuel().trySpawnBoss(dayCount);

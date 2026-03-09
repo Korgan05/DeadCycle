@@ -190,6 +190,14 @@ public class BerserkListener implements Listener {
         if (!shouldProc)
             return;
 
+        // Notifies boss that this skill is being used (for adaptation/counters)
+        if (plugin.bossDuel() != null) {
+            plugin.bossDuel().registerSkillUsage(p, "berserk");
+        }
+        if (plugin.miniBoss() != null) {
+            plugin.miniBoss().onPlayerSkillUsed(p, "berserk");
+        }
+
         int cooldownSeconds = Math.max(1, plugin.getConfig().getInt("kit_buffs.berserk.proc_cooldown_seconds", 75));
         nextAllowedAt.put(p.getUniqueId(), now + cooldownSeconds * 1000L);
 

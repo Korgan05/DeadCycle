@@ -207,7 +207,7 @@ public class ShopGUI implements Listener {
         viewByPlayer.remove(e.getPlayer().getUniqueId());
     }
 
-    private ItemStack createTaggedScroll(int amount) {
+    public ItemStack createTaggedScroll(int amount) {
         ItemStack it = new ItemStack(Material.PAPER, amount);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
@@ -420,6 +420,8 @@ public class ShopGUI implements Listener {
                 "§cЛук", List.of()));
         offers.add(new Offer(OfferType.BUY, Category.COMBAT, "ARROW_16", Material.ARROW, 16, 25,
                 "§cСтрелы §7(x16)", List.of()));
+        offers.add(new Offer(OfferType.BUY, Category.COMBAT, "DIAMOND_SWORD", Material.DIAMOND_SWORD, 1, 600,
+                "§cАлмазный меч", List.of()));
 
         // ARMOR
         offers.add(new Offer(OfferType.BUY, Category.ARMOR, "LEATHER_HELMET", Material.LEATHER_HELMET, 1, 25,
@@ -438,6 +440,14 @@ public class ShopGUI implements Listener {
                 "§bЖелезные поножи", List.of()));
         offers.add(new Offer(OfferType.BUY, Category.ARMOR, "IRON_BOOTS", Material.IRON_BOOTS, 1, 140,
                 "§bЖелезные ботинки", List.of()));
+        offers.add(new Offer(OfferType.BUY, Category.ARMOR, "DIAMOND_HELMET", Material.DIAMOND_HELMET, 1, 450,
+                "§bАлмазный шлем", List.of()));
+        offers.add(new Offer(OfferType.BUY, Category.ARMOR, "DIAMOND_CHESTPLATE", Material.DIAMOND_CHESTPLATE, 1, 800,
+                "§bАлмазная кираса", List.of()));
+        offers.add(new Offer(OfferType.BUY, Category.ARMOR, "DIAMOND_LEGGINGS", Material.DIAMOND_LEGGINGS, 1, 700,
+                "§bАлмазные поножи", List.of()));
+        offers.add(new Offer(OfferType.BUY, Category.ARMOR, "DIAMOND_BOOTS", Material.DIAMOND_BOOTS, 1, 400,
+                "§bАлмазные ботинки", List.of()));
 
         // TOOLS
         offers.add(new Offer(OfferType.BUY, Category.TOOLS, "IRON_PICKAXE", Material.IRON_PICKAXE, 1, 180,
@@ -446,6 +456,12 @@ public class ShopGUI implements Listener {
                 "§eЖелезный топор", List.of()));
         offers.add(new Offer(OfferType.BUY, Category.TOOLS, "IRON_SHOVEL", Material.IRON_SHOVEL, 1, 60,
                 "§eЖелезная лопата", List.of()));
+        offers.add(new Offer(OfferType.BUY, Category.TOOLS, "DIAMOND_PICKAXE", Material.DIAMOND_PICKAXE, 1, 550,
+                "§eАлмазная кирка", List.of()));
+        offers.add(new Offer(OfferType.BUY, Category.TOOLS, "DIAMOND_AXE", Material.DIAMOND_AXE, 1, 500,
+                "§eАлмазный топор", List.of()));
+        offers.add(new Offer(OfferType.BUY, Category.TOOLS, "DIAMOND_SHOVEL", Material.DIAMOND_SHOVEL, 1, 300,
+                "§eАлмазная лопата", List.of()));
         offers.add(new Offer(OfferType.BUY, Category.TOOLS, "SHEARS", Material.SHEARS, 1, 45,
                 "§eНожницы", List.of()));
         offers.add(new Offer(OfferType.BUY, Category.TOOLS, "TORCH_16", Material.TORCH, 16, 20,

@@ -16,17 +16,38 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 @SuppressWarnings("deprecation")
 public class KitMenu implements Listener {
 
     private final DeadCyclePlugin plugin;
+    private final Map<UUID, Long> lastOpenAt = new HashMap<>();
 
     public KitMenu(DeadCyclePlugin plugin) {
         this.plugin = plugin;
     }
 
     public void open(Player p) {
+        if (p == null || !p.isOnline())
+            return;
+
+        String currentTitle = null;
+        try {
+            currentTitle = ChatColor.stripColor(p.getOpenInventory().getTitle());
+        } catch (Throwable ignored) {
+        }
+        if ("Выбор кита".equalsIgnoreCase(currentTitle))
+            return;
+
+        long now = System.currentTimeMillis();
+        Long last = lastOpenAt.get(p.getUniqueId());
+        if (last != null && (now - last) < 500L)
+            return;
+        lastOpenAt.put(p.getUniqueId(), now);
+
         Inventory inv = Bukkit.createInventory(null, 27, ChatColor.DARK_GREEN + "Выбор кита");
 
         inv.setItem(11, item(Material.IRON_SWORD,
@@ -54,6 +75,21 @@ public class KitMenu implements Listener {
                 ChatColor.DARK_RED + "Берсерк",
                 ChatColor.GRAY + "Ярость на грани смерти",
                 ChatColor.GRAY + "Прокает от низкого HP"));
+
+        inv.setItem(26, item(Material.NETHER_STAR,
+                ChatColor.LIGHT_PURPLE + "Ритуалист",
+                ChatColor.GRAY + "Культовый боец ближнего боя",
+                ChatColor.GRAY + "Сильнее в 1v1, слабее в толпе"));
+
+        inv.setItem(18, item(Material.ENDER_EYE,
+                ChatColor.BLUE + "Клонер",
+                ChatColor.GRAY + "Призывает своих клонов",
+                ChatColor.GRAY + "Есть 3 режима ИИ"));
+
+        inv.setItem(16, item(Material.TOTEM_OF_UNDYING,
+                ChatColor.DARK_AQUA + "Призыватель",
+                ChatColor.GRAY + "Призывает волков, фантомов и големов",
+                ChatColor.GRAY + "На высоком уровне вызывает Вардена"));
 
         p.openInventory(inv);
     }
@@ -140,6 +176,33 @@ public class KitMenu implements Listener {
             p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.DARK_RED + "Берсерк");
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
             p.closeInventory();
+            return;
+        }
+
+        if (slot == 26) {
+            plugin.kit().giveKit(p, KitManager.Kit.DUELIST);
+            plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
+            p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.LIGHT_PURPLE + "Ритуалист");
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
+            p.closeInventory();
+            return;
+        }
+
+        if (slot == 18) {
+            plugin.kit().giveKit(p, KitManager.Kit.CLONER);
+            plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
+            p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.BLUE + "Клонер");
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
+            p.closeInventory();
+            return;
+        }
+
+        if (slot == 16) {
+            plugin.kit().giveKit(p, KitManager.Kit.SUMMONER);
+            plugin.progress().setKitChoiceRequired(p.getUniqueId(), false);
+            p.sendMessage(ChatColor.GREEN + "Ты выбрал кит: " + ChatColor.DARK_AQUA + "Призыватель");
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.2f);
+            p.closeInventory();
         }
     }
 
@@ -157,12 +220,17 @@ public class KitMenu implements Listener {
         if (!plugin.progress().isKitChoiceRequired(p.getUniqueId()))
             return;
 
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        long now = System.currentTimeMillis();
+        Long last = lastOpenAt.get(p.getUniqueId());
+        if (last != null && (now - last) < 300L)
+            return;
+
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (!p.isOnline())
                 return;
             if (p.getGameMode() == GameMode.SPECTATOR)
                 return;
             open(p);
-        });
+        }, 2L);
     }
 }

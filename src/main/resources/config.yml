@@ -26,6 +26,8 @@ zombies:
   enabled: true
   base_per_player: 2
   per_night_add: 1
+  # Базовая скорость обычного зомби (остальные типы масштабируются от неё)
+  base_speed: 0.23
 
   # ✅ когда наступает день — удаляем зомби
   despawn_at_day: true
@@ -43,6 +45,203 @@ zombies:
 
   follow_range: 48.0
   target_scan_seconds: 2
+
+  # Типы зомби для разнообразия волн
+  # Механика выбора: обычный и спец-типы выбираются по весам (weight),
+  # а спец-типы начинают выпадать только с min_day.
+  types:
+    normal:
+      enabled: true
+      min_day: 1
+      weight: 70
+      hp_mult: 1.0
+      damage_mult: 1.0
+      speed_mult: 1.0
+      follow_mult: 1.0
+      siege_damage_mult: 1.0
+
+    runner:
+      enabled: true
+      min_day: 2
+      weight: 16
+      hp_mult: 0.72
+      damage_mult: 0.85
+      speed_mult: 1.34
+      follow_mult: 1.08
+      siege_damage_mult: 1.0
+
+    brute:
+      enabled: true
+      min_day: 4
+      weight: 10
+      hp_mult: 2.15
+      damage_mult: 1.45
+      speed_mult: 0.82
+      follow_mult: 0.95
+      siege_damage_mult: 1.0
+
+    screamer:
+      enabled: true
+      min_day: 5
+      weight: 7
+      hp_mult: 0.95
+      damage_mult: 1.0
+      speed_mult: 1.0
+      follow_mult: 1.15
+      siege_damage_mult: 1.0
+      aura:
+        radius: 7.5
+        # 0 = Speed I / Strength I
+        speed_amp: 0
+        strength_amp: 0
+        cooldown_ticks: 80
+        duration_ticks: 60
+
+    necromancer:
+      enabled: true
+      min_day: 6
+      weight: 5
+      hp_mult: 1.1
+      damage_mult: 0.92
+      speed_mult: 0.96
+      follow_mult: 1.2
+      siege_damage_mult: 1.0
+      summon:
+        cooldown_ticks: 140
+        count: 2
+        radius: 5.5
+        hp_mult: 0.62
+        damage_mult: 0.76
+        speed_mult: 1.02
+
+    sapper:
+      enabled: true
+      min_day: 7
+      weight: 8
+      hp_mult: 1.35
+      damage_mult: 0.95
+      speed_mult: 0.92
+      follow_mult: 1.0
+      # Главная роль сапёра: быстрее ломать базу
+      siege_damage_mult: 2.4
+
+mini_boss:
+  enabled: true
+  # Ночь, в которую появляются мини-боссы (по одному на каждого игрока)
+  spawn_day: 5
+
+  # Базовые статы мини-босса (он должен быть проблемным, но слабее главного босса)
+  hp: 72.0
+  damage: 3.8
+  speed: 0.26
+  follow_range: 38.0
+
+  # Как часто мини-босс может копировать использованный игроком скилл
+  copy_cooldown_ms: 2200
+
+  # Дистанция спавна вокруг игрока
+  spawn_radius_min: 5
+  spawn_radius_max: 10
+
+cloner:
+  enabled: true
+
+  # Максимум клонов: base + (level-1)/max_clones_plus_every_levels
+  max_clones_base: 1
+  max_clones_plus_every_levels: 2
+
+  # Базовые статы клонов
+  hp_base: 22.0
+  hp_per_level: 1.2
+  damage_base: 2.8
+  damage_per_level: 0.35
+  speed_base: 0.26
+  speed_per_level: 0.01
+  follow_range: 34.0
+
+  # Поведение ИИ
+  protect_radius: 16.0
+  attack_radius: 28.0
+  leash_owner_distance: 14
+  leash_base_distance: 18
+
+  # Где появится клон относительно игрока
+  spawn_radius_min: 1
+  spawn_radius_max: 4
+
+  # Если зомби умер вскоре после удара клона, засчитываем килл клону
+  clone_hit_credit_ms: 5000
+
+  # Мана клонов (клоны тратят её на само-лечение и уклонение)
+  mana_base: 55
+  mana_per_level: 4
+  mana_regen_per_second: 0.35
+
+  # Авто-лечение клонов (если у владельца открыт реген/автореген)
+  self_heal_trigger_health_ratio: 0.92
+  self_heal_mana_per_second: 1.0
+  self_heal_amplifier: 1
+
+  # Авто-уклонение клонов (если у владельца открыт авто-додж)
+  dodge_chance: 0.25
+  dodge_mana_cost: 5
+  dodge_cooldown_ms: 850
+
+  # Блуждание в режиме "Атака" (клоны не следуют за владельцем)
+  attack_roam_radius_min: 6
+  attack_roam_radius_max: 14
+
+summoner:
+  enabled: true
+
+  # Радиус поиска врагов призванными существами
+  target_search_radius: 32.0
+
+  # Радиус призыва относительно игрока
+  spawn_radius_min: 2
+  spawn_radius_max: 8
+
+  # Если зомби умер вскоре после удара призванного существа — засчитываем килл
+  summon_hit_credit_ms: 5000
+
+  # Длительность жизни призывов (сек)
+  duration_seconds:
+    wolf: 55
+    phantom: 50
+    golem: 65
+    vex: 45
+
+  # Лимиты активных призывов по типам
+  max_active:
+    wolf: 10
+    phantom: 4
+    golem: 2
+    vex: 6
+
+  # Пассивка 10 уровня: варден перед смертью
+  death_warden:
+    duration_seconds: 30
+    hp: 180.0
+    damage: 18.0
+
+  # Базовые статы призывов
+  stats:
+    wolf:
+      hp: 24.0
+      damage: 4.5
+      speed: 0.34
+    phantom:
+      hp: 26.0
+      damage: 5.5
+      speed: 0.30
+    golem:
+      hp: 90.0
+      damage: 11.0
+      speed: 0.24
+    vex:
+      hp: 20.0
+      damage: 4.0
+      speed: 0.40
 
 base:
   enabled: true
@@ -193,6 +392,32 @@ kit_xp:
     level_xp_add_per_level: 45
     max_level: 10
 
+  duelist:
+    # Ритуалист получает XP в активном бою
+    exp_per_zombie: 1
+    exp_per_hit: 1
+    level_xp_base: 75
+    level_xp_add_per_level: 50
+    max_level: 10
+
+  cloner:
+    # Клонер получает XP за свои убийства
+    exp_per_zombie: 1
+    # И отдельно за убийства, которые сделал клон
+    exp_per_clone_kill_zombie: 2
+    level_xp_base: 70
+    level_xp_add_per_level: 42
+    max_level: 10
+
+  summoner:
+    # Призыватель получает XP за свои убийства
+    exp_per_zombie: 1
+    # И отдельно за убийства, сделанные призванными существами
+    exp_per_summon_kill_zombie: 2
+    level_xp_base: 72
+    level_xp_add_per_level: 44
+    max_level: 10
+
 # --- kit buffs (баланс кита) ---
 kit_buffs:
   fighter:
@@ -234,6 +459,37 @@ kit_buffs:
       # Если 0 — шаги волны считаются от радиуса (плавнее).
       roar_steps: 0
       roar_period: 1
+
+  duelist:
+    enabled: true
+
+    # Радиус, в котором считается давление толпы
+    crowd_radius: 8.5
+
+    # Бонус урона в 1v1
+    one_vs_one_damage_bonus_base: 0.10
+    one_vs_one_damage_bonus_per_level: 0.018
+    one_vs_one_damage_bonus_cap: 0.38
+
+    # Штраф урона в толпе
+    crowd_damage_penalty_per_enemy: 0.08
+    crowd_damage_penalty_cap: 0.35
+
+    # Вампиризм в 1v1
+    one_vs_one_lifesteal_base: 0.04
+    one_vs_one_lifesteal_per_level: 0.003
+    one_vs_one_lifesteal_cap: 0.10
+
+    # Снижение входящего урона в 1v1
+    one_vs_one_reduction_base: 0.07
+    one_vs_one_reduction_per_level: 0.014
+    one_vs_one_reduction_cap: 0.32
+
+    # Насколько быстро падает защита в толпе
+    crowd_reduction_decay_per_enemy: 0.20
+
+    # Кулдаун начисления XP за попадания
+    hit_xp_cooldown_ms: 1000
 
 # --- base resources ---
 base_resources:
@@ -341,6 +597,83 @@ skills:
       levitation_amplifier: 2
       levitation_duration_ticks: 60
 
+  duelist:
+    ritual_cut:
+      # 🩸 Ритуальный Разрез — сильный фокус по основной цели
+      xp_cost: 18
+      cooldown_ms: 14000
+      range: 16.0
+      crowd_radius: 8.5
+      damage_base: 6.0
+      damage_per_level: 0.55
+      one_vs_one_bonus_base: 0.20
+      one_vs_one_bonus_per_level: 0.015
+      crowd_penalty_per_enemy: 0.16
+      crowd_penalty_cap: 0.45
+      weaken_seconds_base: 5
+      weaken_seconds_per_level: 1
+      weaken_amplifier_base: 0
+      slow_seconds: 4
+      slow_amplifier: 1
+      self_slow_on_crowd_ticks: 24
+
+    circle_trance:
+      # 🔮 Транс Круга — ритуальная стойка под фокус-цель
+      xp_cost: 14
+      cooldown_ms: 18000
+      duration_seconds_base: 5
+      duration_seconds_per_level: 1
+      crowd_radius: 9.0
+      resistance_amplifier_base: 0
+      resistance_amplifier_level7: 1
+      speed_amplifier_base: 0
+      regen_amplifier_base: 0
+      mark_weakness_seconds: 4
+      mark_weakness_amplifier: 0
+      crowd_duration_multiplier: 0.72
+      crowd_resist_decay_per_enemy: 0.25
+
+  cloner:
+    summon:
+      # 🧬 Призыв клона
+      xp_cost: 50
+      cooldown_ms: 3000
+      cooldown_reduce_per_level_ms: 120
+      cooldown_min_ms: 1000
+
+    mode:
+      # 🔁 Переключение режима ИИ клонов
+      cooldown_ms: 700
+
+  summoner:
+    wolf:
+      # 🐺 Призыв волков
+      xp_cost: 24
+      cooldown_ms: 2400
+      cooldown_reduce_per_level_ms: 80
+      cooldown_min_ms: 1200
+
+    phantom:
+      # 👻 Призыв фантома (с 3 уровня)
+      xp_cost: 34
+      cooldown_ms: 5200
+      cooldown_reduce_per_level_ms: 120
+      cooldown_min_ms: 2600
+
+    golem:
+      # 🛡 Призыв железного голема (с 4 уровня)
+      xp_cost: 52
+      cooldown_ms: 8200
+      cooldown_reduce_per_level_ms: 140
+      cooldown_min_ms: 4200
+
+    vex:
+      # 🧿 Призыв духов-вексов (с 7 уровня)
+      xp_cost: 40
+      cooldown_ms: 6400
+      cooldown_reduce_per_level_ms: 130
+      cooldown_min_ms: 3000
+
 # ⚡ Настройки системы маны (XP)
 mana:
   # Начальный максимум маны для новых игроков
@@ -397,4 +730,19 @@ boss:
     # Скольжение при отступе босса
     backstep_speed_min: 0.8
     backstep_speed_max: 1.2
+
+# 🎴 Админские аниме-силы (Годжо/Сукуна)
+anime_powers:
+  # true = использовать только OP / deadcycle.admin
+  admin_only: true
+
+  # Прокачка силы
+  max_level: 10
+  level_xp_base: 35
+  level_xp_add_per_level: 25
+
+  gojo:
+    # Бесконечность: стоимость блокировки урона
+    infinity_base_mana: 2
+    infinity_mana_per_damage: 1.35
 

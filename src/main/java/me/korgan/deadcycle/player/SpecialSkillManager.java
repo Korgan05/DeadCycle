@@ -27,6 +27,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
@@ -68,7 +69,9 @@ public class SpecialSkillManager implements Listener {
     private final Set<UUID> autoDodgeUnlocked = new HashSet<>();
 
     private final Map<UUID, Long> regenSkillUntil = new HashMap<>();
+    private final Map<UUID, Long> regenInteractUntil = new HashMap<>();
     private final Map<UUID, Boolean> autoRegenEnabled = new HashMap<>();
+    private final Map<UUID, Boolean> autoDodgeEnabled = new HashMap<>();
     private final Map<UUID, Double> regenManaAccumulator = new HashMap<>();
     private final Map<UUID, Double> autoRegenManaAccumulator = new HashMap<>();
     private final Map<UUID, Long> outOfManaMessageUntil = new HashMap<>();
@@ -116,7 +119,8 @@ public class SpecialSkillManager implements Listener {
         this.regenManaPerSecond = plugin.getConfig().getDouble("special_skills.regen_item.mana_per_second", 1.0);
         this.autoRegenManaPerSecond = plugin.getConfig().getDouble("special_skills.auto_regen.mana_per_second", 0.5);
         this.regenAmplifier = Math.max(0, plugin.getConfig().getInt("special_skills.regen_item.potion_amplifier", 1));
-        this.autoRegenAmplifier = Math.max(0, plugin.getConfig().getInt("special_skills.auto_regen.potion_amplifier", 0));
+        this.autoRegenAmplifier = Math.max(0,
+                plugin.getConfig().getInt("special_skills.auto_regen.potion_amplifier", 0));
         this.autoDodgeManaCost = plugin.getConfig().getInt("special_skills.auto_dodge.mana_cost", 5);
         this.autoDodgeChance = plugin.getConfig().getDouble("special_skills.auto_dodge.dodge_chance", 0.25);
         this.outOfManaMessageCooldownMs = Math.max(500L,
@@ -253,6 +257,9 @@ public class SpecialSkillManager implements Listener {
         if (!isRegenActive(p))
             return;
 
+        if (p.getHealth() >= getMaxHealth(p))
+            return;
+
         if (!spendManaOverTime(p, regenManaPerSecond, regenManaAccumulator)) {
             if (plugin.mana().getCurrentXp(p) <= 0) {
                 sendOutOfManaMessage(p, "§cНедостаточно маны для регенерации.");
@@ -365,6 +372,7 @@ public class SpecialSkillManager implements Listener {
         if (meta != null) {
             meta.displayName(LEGACY.deserialize("§eСкилл: АвтоУклонение"));
             meta.lore(java.util.List.of(
+                    LEGACY.deserialize("§7ПКМ — включить/выключить"),
                     LEGACY.deserialize("§7Шанс уклонения от атак"),
                     LEGACY.deserialize("§7Тратит ману (XP)")));
             meta.setEnchantmentGlintOverride(true);
@@ -490,7 +498,9 @@ public class SpecialSkillManager implements Listener {
 
     private void clearRuntimeState(UUID uuid) {
         regenSkillUntil.remove(uuid);
+        regenInteractUntil.remove(uuid);
         autoRegenEnabled.remove(uuid);
+        autoDodgeEnabled.remove(uuid);
         regenManaAccumulator.remove(uuid);
         autoRegenManaAccumulator.remove(uuid);
         outOfManaMessageUntil.remove(uuid);
@@ -555,7 +565,9 @@ public class SpecialSkillManager implements Listener {
         autoDodgeUnlocked.clear();
 
         regenSkillUntil.clear();
+        regenInteractUntil.clear();
         autoRegenEnabled.clear();
+        autoDodgeEnabled.clear();
         regenManaAccumulator.clear();
         autoRegenManaAccumulator.clear();
         outOfManaMessageUntil.clear();
@@ -746,11 +758,23 @@ public class SpecialSkillManager implements Listener {
         if (!e.getAction().isRightClick())
             return;
 
+        if (e.getHand() == EquipmentSlot.OFF_HAND) {
+            ItemStack main = e.getPlayer().getInventory().getItemInMainHand();
+            if (isSpecialItem(main))
+                return;
+        }
+
         ItemStack it = e.getItem();
 
         Player p = e.getPlayer();
         UUID uuid = p.getUniqueId();
         rebuildItemCache(p);
+
+        if (isRegenItem(it)) {
+            e.setCancelled(true);
+            regenInteractUntil.put(uuid, System.currentTimeMillis() + 2200L);
+            return;
+        }
 
         if (isAutoRegenItem(it)) {
             e.setCancelled(true);
@@ -765,6 +789,19 @@ public class SpecialSkillManager implements Listener {
             rebuildItemCache(p);
             return;
         }
+
+        if (hasKey(it, autoDodgeKey)) {
+            e.setCancelled(true);
+            boolean enabled = autoDodgeEnabled.getOrDefault(uuid, true);
+            autoDodgeEnabled.put(uuid, !enabled);
+
+            if (enabled) {
+                p.sendMessage("§cАвтоуклонение выключено.");
+            } else {
+                p.sendMessage("§aАвтоуклонение включено.");
+            }
+            return;
+        }
     }
 
     @EventHandler
@@ -774,6 +811,10 @@ public class SpecialSkillManager implements Listener {
         if (!(e.getEntity() instanceof Player p))
             return;
         if (!hasAutoDodgeItem(p))
+            return;
+
+        UUID uuid = p.getUniqueId();
+        if (!autoDodgeEnabled.getOrDefault(uuid, true))
             return;
 
         if (autoDodgeChance <= 0.0)
@@ -786,7 +827,6 @@ public class SpecialSkillManager implements Listener {
             return;
 
         e.setCancelled(true);
-        UUID uuid = p.getUniqueId();
         addManaSpent(uuid, autoDodgeManaCost);
         incrementCounter(autoDodgeProcCount, uuid);
         touchSkillTick(uuid);
@@ -808,16 +848,23 @@ public class SpecialSkillManager implements Listener {
     }
 
     private boolean isRegenActive(Player p) {
-        SkillItemCache cache = itemCache.computeIfAbsent(p.getUniqueId(), ignored -> scanSkillItems(p));
-        if (!cache.regenInMainHand) {
-            cache.regenInMainHand = isRegenItem(p.getInventory().getItemInMainHand());
-            if (cache.regenInMainHand) {
-                cache.hasRegenItem = true;
-            }
+        UUID uuid = p.getUniqueId();
+        SkillItemCache cache = itemCache.computeIfAbsent(uuid, ignored -> scanSkillItems(p));
+        boolean regenInMainHand = isRegenItem(p.getInventory().getItemInMainHand());
+        boolean regenInOffHand = isRegenItem(p.getInventory().getItemInOffHand());
+
+        cache.regenInMainHand = regenInMainHand;
+        if (regenInMainHand || regenInOffHand) {
+            cache.hasRegenItem = true;
         }
 
-        if (!cache.regenInMainHand)
+        if (!regenInMainHand && !regenInOffHand)
             return false;
+
+        long interactUntil = regenInteractUntil.getOrDefault(uuid, 0L);
+        if (System.currentTimeMillis() <= interactUntil)
+            return true;
+
         return p.isHandRaised();
     }
 
