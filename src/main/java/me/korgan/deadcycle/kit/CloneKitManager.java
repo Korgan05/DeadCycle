@@ -70,8 +70,6 @@ public class CloneKitManager implements Listener {
     private boolean cloneSpawning = false;
 
     private boolean enabled;
-    private int maxClonesBase;
-    private int extraCloneEveryLevels;
 
     private double hpBase;
     private double hpPerLevel;
@@ -116,10 +114,6 @@ public class CloneKitManager implements Listener {
 
     public void reload() {
         this.enabled = plugin.getConfig().getBoolean("cloner.enabled", true);
-
-        this.maxClonesBase = Math.max(1, plugin.getConfig().getInt("cloner.max_clones_base", 1));
-        this.extraCloneEveryLevels = Math.max(1,
-                plugin.getConfig().getInt("cloner.max_clones_plus_every_levels", 2));
 
         this.hpBase = Math.max(10.0, plugin.getConfig().getDouble("cloner.hp_base", 22.0));
         this.hpPerLevel = Math.max(0.0, plugin.getConfig().getDouble("cloner.hp_per_level", 1.2));
@@ -241,9 +235,15 @@ public class CloneKitManager implements Listener {
     }
 
     public int getMaxClones(Player owner) {
-        int level = plugin.progress().getClonerLevel(owner.getUniqueId());
-        int extra = Math.max(0, (level - 1) / extraCloneEveryLevels);
-        return maxClonesBase + extra;
+        int level = Math.max(1, plugin.progress().getClonerLevel(owner.getUniqueId()));
+
+        if (level >= 10)
+            return Integer.MAX_VALUE;
+
+        if (level == 9)
+            return 18;
+
+        return 3 + ((level - 1) * 2);
     }
 
     public CloneMode getMode(UUID ownerId) {
@@ -287,17 +287,19 @@ public class CloneKitManager implements Listener {
         }
 
         ownerToClones.computeIfAbsent(ownerId, k -> new HashSet<>()).add(clone.getUniqueId());
-        ownerModes.putIfAbsent(ownerId, CloneMode.SELF_DEFENSE);
-
-        int now = getCloneCount(ownerId);
-        int max = getMaxClones(owner);
-        owner.sendMessage("§b[Клоны] §fПризван клон §7(" + now + "/" + max + ")");
-        owner.playSound(owner.getLocation(), Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, 0.7f, 1.3f);
 
         UUID cloneId = clone.getUniqueId();
         cloneMana.put(cloneId, getCloneMaxMana(ownerId));
         cloneHealCostAccumulator.put(cloneId, 0.0);
         cloneDodgeCooldownUntil.put(cloneId, 0L);
+
+        ownerModes.putIfAbsent(ownerId, CloneMode.SELF_DEFENSE);
+
+        int now = getCloneCount(ownerId);
+        int max = getMaxClones(owner);
+        String maxText = (max == Integer.MAX_VALUE) ? "∞" : String.valueOf(max);
+        owner.sendMessage("§b[Клоны] §fПризван клон §7(" + now + "/" + maxText + ")");
+        owner.playSound(owner.getLocation(), Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, 0.7f, 1.3f);
 
         return true;
     }
@@ -442,28 +444,30 @@ public class CloneKitManager implements Listener {
         int level = plugin.progress().getClonerLevel(owner.getUniqueId());
         double hp = hpBase + Math.max(0, level - 1) * hpPerLevel;
         double damage = damageBase + Math.max(0, level - 1) * damagePerLevel;
-        double speed = speedBase + Math.max(0, level - 1) * speedPerLevel;
+        double speed = Math.max(
+                speedBase + Math.max(0, level - 1) * speedPerLevel,
+                getSprintLikeMoveSpeed(owner));
 
         try {
             cloneSpawning = true;
-            return world.spawn(loc, Vindicator.class, v -> {
-                v.getPersistentDataContainer().set(cloneKey, PersistentDataType.BYTE, (byte) 1);
-                v.getPersistentDataContainer().set(cloneOwnerKey, PersistentDataType.STRING,
+            return world.spawn(loc, PigZombie.class, piglin -> {
+                piglin.getPersistentDataContainer().set(cloneKey, PersistentDataType.BYTE, (byte) 1);
+                piglin.getPersistentDataContainer().set(cloneOwnerKey, PersistentDataType.STRING,
                         owner.getUniqueId().toString());
 
-                v.setCustomName("§bКлон-разбойник §7" + owner.getName());
-                v.setCustomNameVisible(true);
-                v.setCanPickupItems(false);
-                v.setRemoveWhenFarAway(false);
-                v.setPersistent(true);
-                v.setPatrolLeader(false);
-                v.setCanJoinRaid(false);
+                piglin.setCustomName("§bКлон-свинозомби §7" + owner.getName());
+                piglin.setCustomNameVisible(true);
+                piglin.setCanPickupItems(false);
+                piglin.setRemoveWhenFarAway(false);
+                piglin.setPersistent(true);
+                piglin.setBaby(false);
 
-                v.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 20 * 60 * 60, 0, true, false,
+                piglin.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 20 * 60 * 60, 0, true,
+                        false,
                         false));
 
-                applyAttributes(v, hp, damage, speed, followRange);
-                copyEquipmentFromOwner(owner, v);
+                applyAttributes(piglin, hp, damage, speed, followRange);
+                copyEquipmentFromOwner(owner, piglin);
             });
         } finally {
             cloneSpawning = false;
@@ -578,7 +582,7 @@ public class CloneKitManager implements Listener {
             return;
         }
 
-        moveTowards(clone, baseCenter, 0.28);
+        moveTowards(clone, baseCenter, getSprintLikeMoveSpeed(owner));
     }
 
     private void controlSelfDefense(Mob clone, Player owner) {
@@ -588,7 +592,7 @@ public class CloneKitManager implements Listener {
             return;
         }
 
-        moveTowards(clone, owner.getLocation(), 0.30);
+        moveTowards(clone, owner.getLocation(), getSprintLikeMoveSpeed(owner));
     }
 
     private void controlAttack(Mob clone, Player owner) {
@@ -602,8 +606,17 @@ public class CloneKitManager implements Listener {
 
         Location roamTarget = resolveAttackRoamTarget(clone);
         if (roamTarget != null) {
-            moveTowards(clone, roamTarget, 0.26);
+            moveTowards(clone, roamTarget, getSprintLikeMoveSpeed(owner));
         }
+    }
+
+    private double getSprintLikeMoveSpeed(Player owner) {
+        if (owner == null)
+            return 0.34;
+
+        double walkSpeed = owner.getWalkSpeed();
+        double sprintLike = walkSpeed * 1.7;
+        return Math.max(0.32, Math.min(0.45, sprintLike));
     }
 
     private Location resolveAttackRoamTarget(Mob clone) {

@@ -567,7 +567,11 @@ public class SummonerKitManager implements Listener {
 
     private void registerSummon(UUID ownerId, Mob summon, String type, int durationSeconds) {
         ownerToSummons.computeIfAbsent(ownerId, ignored -> new HashSet<>()).add(summon.getUniqueId());
-        summonExpireAt.put(summon.getUniqueId(), System.currentTimeMillis() + (durationSeconds * 1000L));
+        if (TYPE_DEATH_WARDEN.equalsIgnoreCase(type)) {
+            summonExpireAt.put(summon.getUniqueId(), System.currentTimeMillis() + (durationSeconds * 1000L));
+        } else {
+            summonExpireAt.remove(summon.getUniqueId());
+        }
 
         summon.getPersistentDataContainer().set(summonKey, PersistentDataType.BYTE, (byte) 1);
         summon.getPersistentDataContainer().set(summonOwnerKey, PersistentDataType.STRING, ownerId.toString());

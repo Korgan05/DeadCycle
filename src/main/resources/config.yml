@@ -146,9 +146,9 @@ mini_boss:
 cloner:
   enabled: true
 
-  # Максимум клонов: base + (level-1)/max_clones_plus_every_levels
-  max_clones_base: 1
-  max_clones_plus_every_levels: 2
+  # Лимит активных клонов (жестко по уровням в коде):
+  # 1 лвл = 3, 2 = 5, 3 = 7, 4 = 9, 5 = 11,
+  # 6 = 13, 7 = 15, 8 = 17, 9 = 18, 10 = безлимит.
 
   # Базовые статы клонов
   hp_base: 22.0
