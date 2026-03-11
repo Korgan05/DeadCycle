@@ -54,6 +54,9 @@ public class PlayerRulesListener implements Listener {
             inv.clear();
             inv.setArmorContents(null);
             inv.setItemInOffHand(null);
+            p.getEnderChest().clear();
+            p.setItemOnCursor(null);
+            p.updateInventory();
         } catch (Throwable ignored) {
         }
     }
@@ -106,10 +109,25 @@ public class PlayerRulesListener implements Listener {
     // при заходе — телепорт на базу (если включена)
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
+        Player p = e.getPlayer();
+
+        if (mustWipeInventoryAfterReset(p)) {
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!p.isOnline())
+                    return;
+
+                clearAll(p);
+                markInventoryWipedForReset(p);
+
+                if (plugin.mana() != null) {
+                    int max = plugin.mana().getMaxXp(p.getUniqueId());
+                    plugin.mana().setCurrentXp(p, max);
+                }
+            });
+        }
+
         if (!plugin.base().isEnabled())
             return;
-
-        Player p = e.getPlayer();
         Location spawn = getBaseSpawn();
         if (spawn == null)
             return;
@@ -119,6 +137,31 @@ public class PlayerRulesListener implements Listener {
             if (p.isOnline())
                 p.teleport(spawn);
         }, 10L);
+    }
+
+    private boolean mustWipeInventoryAfterReset(Player p) {
+        if (p == null || plugin.playerData() == null)
+            return false;
+
+        int resetVersion = Math.max(0, plugin.getConfig().getInt("runtime.full_reset_version", 0));
+        if (resetVersion <= 0)
+            return false;
+
+        int wipedVersion = plugin.playerData().getInt(
+                p.getUniqueId(),
+                "meta.last_inventory_wipe_reset_version",
+                0);
+
+        return wipedVersion < resetVersion;
+    }
+
+    private void markInventoryWipedForReset(Player p) {
+        if (p == null || plugin.playerData() == null)
+            return;
+
+        int resetVersion = Math.max(0, plugin.getConfig().getInt("runtime.full_reset_version", 0));
+        plugin.playerData().setInt(p.getUniqueId(), "meta.last_inventory_wipe_reset_version", resetVersion);
+        plugin.playerData().save();
     }
 
     private Location getBaseSpawn() {

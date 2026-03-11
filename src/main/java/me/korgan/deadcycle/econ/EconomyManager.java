@@ -5,9 +5,11 @@ import me.korgan.deadcycle.kit.KitManager;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Zombie;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.io.File;
 import java.io.IOException;
@@ -70,10 +72,19 @@ public class EconomyManager implements Listener {
         if (!e.getEntityType().name().equalsIgnoreCase("ZOMBIE"))
             return;
 
+        Zombie zombie = (Zombie) e.getEntity();
+        if (isMiniBoss(zombie) || isBoss(zombie))
+            return;
+
         long reward = plugin.getConfig().getLong("economy.kill_zombie_reward", 5);
         if (reward > 0) {
             give(killer, reward);
             killer.sendMessage(ChatColor.GREEN + "Зомби убит! +" + ChatColor.GOLD + reward + "$");
+        }
+
+        int playerExp = plugin.getConfig().getInt("player_progress.kill_exp.zombie", 2);
+        if (playerExp > 0) {
+            plugin.progress().addPlayerExp(killer, playerExp);
         }
 
         // XP бойцу за убийство
@@ -125,5 +136,16 @@ public class EconomyManager implements Listener {
             if (exp > 0)
                 plugin.progress().addSummonerExp(killer, exp);
         }
+    }
+
+    private boolean isMiniBoss(Zombie zombie) {
+        return plugin.miniBoss() != null
+                && zombie.getPersistentDataContainer().has(plugin.miniBoss().miniBossMarkKey(),
+                        PersistentDataType.BYTE);
+    }
+
+    private boolean isBoss(Zombie zombie) {
+        return plugin.bossDuel() != null
+                && zombie.getPersistentDataContainer().has(plugin.bossDuel().bossMarkKey(), PersistentDataType.BYTE);
     }
 }

@@ -8,6 +8,7 @@ import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.scheduler.BukkitTask;
 
 public class PhaseManager {
@@ -121,6 +122,16 @@ public class PhaseManager {
             plugin.deathSpectator().setFullGameResetFlag(true);
         }
 
+        // Сохраняем «версию» полного ресета, чтобы на следующем входе оффлайн-игроки
+        // принудительно получили чистый инвентарь.
+        int nextResetVersion = Math.max(0, plugin.getConfig().getInt("runtime.full_reset_version", 0)) + 1;
+        plugin.getConfig().set("runtime.full_reset_version", nextResetVersion);
+
+        // Перед очисткой players.yml рассчитываем стартовый максимум маны после ресета.
+        if (plugin.mana() != null) {
+            plugin.mana().prepareCarryoverForReset();
+        }
+
         // 1. СНАЧАЛА очищаем все данные в players.yml (уровни китов, опыт, мана и т.д.)
         if (plugin.playerData() != null)
             plugin.playerData().clearAll();
@@ -170,7 +181,27 @@ public class PhaseManager {
         switchToDay(true);
 
         for (Player p : Bukkit.getOnlinePlayers()) {
+            clearFullInventory(p);
+        }
+
+        for (Player p : Bukkit.getOnlinePlayers()) {
             p.sendMessage("§c[ИГРА] Все игроки умерли. Игра перезагружена до Дня 1!");
+        }
+    }
+
+    private void clearFullInventory(Player p) {
+        if (p == null)
+            return;
+
+        try {
+            PlayerInventory inv = p.getInventory();
+            inv.clear();
+            inv.setArmorContents(null);
+            inv.setItemInOffHand(null);
+            p.getEnderChest().clear();
+            p.setItemOnCursor(null);
+            p.updateInventory();
+        } catch (Throwable ignored) {
         }
     }
 

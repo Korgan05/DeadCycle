@@ -5,6 +5,8 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 public class PlayerDataStore {
@@ -33,6 +35,17 @@ public class PlayerDataStore {
 
     public void setString(UUID uuid, String path, String val) {
         data.set(uuid + "." + path, val);
+    }
+
+    public Set<UUID> getKnownPlayerIds() {
+        Set<UUID> ids = new HashSet<>();
+        for (String key : data.getKeys(false)) {
+            try {
+                ids.add(UUID.fromString(key));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return ids;
     }
 
     public void clearAll() {

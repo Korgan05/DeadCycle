@@ -27,6 +27,9 @@ public class ManaManager {
     // Конфигурация
     private int initialMaxXp;
     private double maxXpIncreasePerUse;
+    private double resetCarryoverPercent;
+
+    private final Map<UUID, Integer> pendingResetStartMax = new HashMap<>();
 
     public ManaManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
@@ -38,6 +41,11 @@ public class ManaManager {
     private void loadConfig() {
         this.initialMaxXp = plugin.getConfig().getInt("mana.initial_max", 100);
         this.maxXpIncreasePerUse = plugin.getConfig().getDouble("mana.max_increase_per_use", 0.5);
+        this.resetCarryoverPercent = plugin.getConfig().getDouble("mana.reset_carryover_percent", 0.10);
+        if (this.resetCarryoverPercent < 0.0)
+            this.resetCarryoverPercent = 0.0;
+        if (this.resetCarryoverPercent > 1.0)
+            this.resetCarryoverPercent = 1.0;
     }
 
     public void reload() {
@@ -123,11 +131,45 @@ public class ManaManager {
     public void resetAll() {
         maxXpCache.clear();
         regenAccumulator.clear();
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            maxXpCache.put(p.getUniqueId(), initialMaxXp);
-            p.setLevel(initialMaxXp);
+
+        PlayerDataStore store = plugin.playerData();
+        if (store == null)
+            return;
+
+        for (Map.Entry<UUID, Integer> entry : pendingResetStartMax.entrySet()) {
+            int carryMax = Math.max(initialMaxXp, entry.getValue());
+            store.setInt(entry.getKey(), "xp.max", carryMax);
         }
-        plugin.playerData().save();
+
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            UUID uuid = p.getUniqueId();
+            int startMax = Math.max(initialMaxXp, pendingResetStartMax.getOrDefault(uuid, initialMaxXp));
+            maxXpCache.put(uuid, startMax);
+            p.setLevel(startMax);
+            store.setInt(uuid, "xp.max", startMax);
+        }
+
+        pendingResetStartMax.clear();
+        store.save();
+    }
+
+    public void prepareCarryoverForReset() {
+        pendingResetStartMax.clear();
+
+        PlayerDataStore store = plugin.playerData();
+        if (store == null)
+            return;
+
+        for (UUID uuid : store.getKnownPlayerIds()) {
+            int progressedMax = Math.max(initialMaxXp, store.getInt(uuid, "xp.max", initialMaxXp));
+            pendingResetStartMax.put(uuid, calculateResetStartMax(progressedMax));
+        }
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            UUID uuid = player.getUniqueId();
+            int progressedMax = Math.max(initialMaxXp, getMaxXp(uuid));
+            pendingResetStartMax.put(uuid, calculateResetStartMax(progressedMax));
+        }
     }
 
     // ============================================
@@ -213,9 +255,13 @@ public class ManaManager {
         UUID uuid = p.getUniqueId();
         loadMaxXp(uuid);
 
+        int max = getMaxXp(uuid);
+
         // Устанавливаем начальный XP если игрок новый
-        if (p.getLevel() == 0) {
-            p.setLevel(initialMaxXp);
+        if (p.getLevel() <= 0) {
+            p.setLevel(max);
+        } else {
+            setCurrentXp(p, p.getLevel());
         }
     }
 
@@ -226,5 +272,11 @@ public class ManaManager {
         }
         regenAccumulator.remove(uuid);
         plugin.playerData().save();
+    }
+
+    private int calculateResetStartMax(int progressedMax) {
+        int gained = Math.max(0, progressedMax - initialMaxXp);
+        int carry = (int) Math.floor(gained * resetCarryoverPercent);
+        return Math.max(initialMaxXp, initialMaxXp + carry);
     }
 }

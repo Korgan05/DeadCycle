@@ -36,6 +36,7 @@ import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -482,6 +483,8 @@ public class SummonerKitManager implements Listener {
                     LivingEntity enemy = findNearestEnemy(summon.getLocation(), targetSearchRadius, ownerId);
                     if (enemy != null) {
                         summon.setTarget(enemy);
+                    } else {
+                        followOwnerWhenIdle(summon, owner);
                     }
                 }
             }
@@ -973,6 +976,50 @@ public class SummonerKitManager implements Listener {
         }
 
         return best;
+    }
+
+    private void followOwnerWhenIdle(Mob summon, Player owner) {
+        if (summon == null || owner == null || !owner.isOnline())
+            return;
+
+        String summonType = summon.getPersistentDataContainer().get(summonTypeKey, PersistentDataType.STRING);
+        if (SummonType.WOLF.configKey().equalsIgnoreCase(summonType))
+            return;
+
+        if (!summon.getWorld().getUID().equals(owner.getWorld().getUID())) {
+            summon.teleport(owner.getLocation().clone().add(0, 1.0, 0));
+            return;
+        }
+
+        Location summonLoc = summon.getLocation();
+        Location ownerLoc = owner.getLocation().clone().add(0, 0.2, 0);
+        double distSq = summonLoc.distanceSquared(ownerLoc);
+
+        if (distSq <= 9.0)
+            return;
+
+        if (distSq > 28.0 * 28.0) {
+            summon.teleport(ownerLoc.clone().add((rng.nextDouble() - 0.5) * 2.0, 0.0, (rng.nextDouble() - 0.5) * 2.0));
+            return;
+        }
+
+        Vector toOwner = ownerLoc.toVector().subtract(summonLoc.toVector());
+        if (toOwner.lengthSquared() < 0.0001)
+            return;
+
+        Vector dir = toOwner.normalize();
+        double base = (summon instanceof IronGolem) ? 0.28 : 0.34;
+        Vector push = dir.multiply(base);
+        Vector vel = summon.getVelocity();
+
+        double yPart = (summon instanceof Phantom || summon instanceof Vex)
+                ? Math.max(-0.20, Math.min(0.28, dir.getY() * 0.32))
+                : Math.max(-0.12, Math.min(0.20, vel.getY()));
+
+        summon.setVelocity(new Vector(
+                vel.getX() * 0.45 + push.getX(),
+                yPart,
+                vel.getZ() * 0.45 + push.getZ()));
     }
 
     private boolean isEnemy(LivingEntity target, UUID ownerId) {

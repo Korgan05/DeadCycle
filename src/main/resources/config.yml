@@ -418,6 +418,18 @@ kit_xp:
     level_xp_add_per_level: 44
     max_level: 10
 
+# --- общий уровень игрока (мета-прогресс) ---
+player_progress:
+  max_level: 50
+  level_xp_base: 60
+  level_xp_add_per_level: 35
+
+  # Награды опыта за убийства
+  kill_exp:
+    zombie: 2
+    mini_boss: 12
+    boss: 30
+
 # --- kit buffs (баланс кита) ---
 kit_buffs:
   fighter:
@@ -682,6 +694,9 @@ mana:
   # Например: 100 мaks = 0.1 в сек, 200 макс = 0.2 в сек, 300 макс = 0.3 в сек
   # Насколько увеличивается максимум маны при каждом использовании скилла
   max_increase_per_use: 0.5
+  # Какой процент от набранного сверх базового максимума переносится после полного ресета
+  # Формула: новый старт = initial_max + (max_за_прошлую_игру - initial_max) * reset_carryover_percent
+  reset_carryover_percent: 0.10
 
 # ⭐ Особые скиллы (не привязаны к китам)
 special_skills:

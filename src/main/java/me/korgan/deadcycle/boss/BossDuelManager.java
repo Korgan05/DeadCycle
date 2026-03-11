@@ -13,7 +13,9 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Zombie;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -176,6 +178,8 @@ public class BossDuelManager implements Listener {
 
     private long nextDashAtMillis = 0L;
     private boolean dashPreparing = false;
+    private boolean unarmedComboActive = false;
+    private long nextUnarmedComboAtMillis = 0L;
 
     public BossDuelManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
@@ -443,6 +447,8 @@ public class BossDuelManager implements Listener {
         helpItemGiven = false;
         dashPreparing = false;
         nextDashAtMillis = System.currentTimeMillis() + (long) dashCooldownTicks * 50L;
+        unarmedComboActive = false;
+        nextUnarmedComboAtMillis = System.currentTimeMillis() + 3500L;
 
         if (lookTask != null) {
             lookTask.cancel();
@@ -507,7 +513,7 @@ public class BossDuelManager implements Listener {
             if (boss == null)
                 return;
 
-            Player target = pickSmartTarget(boss);
+            LivingEntity target = pickCombatTarget(boss);
             if (target == null)
                 return;
 
@@ -561,22 +567,25 @@ public class BossDuelManager implements Listener {
             if (boss == null || boss.isDead())
                 return;
 
-            Player p = pickSmartTarget(boss);
-            if (p == null)
+            LivingEntity target = pickCombatTarget(boss);
+            if (target == null)
                 return;
 
             // Включаем AI и даём цель — пусть сам идёт по навигации
             boss.setAI(true);
-            boss.setTarget(p);
+            boss.setTarget(target);
 
             long now = System.currentTimeMillis();
+            if (tryStartUnarmedCombo(boss, target, now))
+                return;
+
             if (dashPreparing || now < nextDashAtMillis)
                 return;
 
             if (!boss.isOnGround())
                 return;
 
-            double dist = boss.getLocation().distance(p.getLocation());
+            double dist = boss.getLocation().distance(target.getLocation());
             if (dist < 3.0 || dist > 20.0)
                 return;
 
@@ -593,11 +602,11 @@ public class BossDuelManager implements Listener {
                     return;
 
                 Zombie currentBoss = getBoss();
-                Player target = (currentBoss != null) ? pickSmartTarget(currentBoss) : null;
-                if (currentBoss == null || target == null || currentBoss.isDead())
+                LivingEntity dashTarget = (currentBoss != null) ? pickCombatTarget(currentBoss) : null;
+                if (currentBoss == null || dashTarget == null || currentBoss.isDead())
                     return;
 
-                Vector dir = target.getLocation().toVector().subtract(currentBoss.getLocation().toVector()).setY(0);
+                Vector dir = dashTarget.getLocation().toVector().subtract(currentBoss.getLocation().toVector()).setY(0);
                 if (dir.lengthSquared() < 0.0001)
                     return;
                 dir.normalize();
@@ -816,6 +825,8 @@ public class BossDuelManager implements Listener {
         rageMode = false;
         dashPreparing = false;
         nextDashAtMillis = 0L;
+        unarmedComboActive = false;
+        nextUnarmedComboAtMillis = 0L;
         stage = Stage.NONE;
     }
 
@@ -1087,6 +1098,111 @@ public class BossDuelManager implements Listener {
         return chosen;
     }
 
+    private boolean isSummonedOrCloneAlly(Entity entity) {
+        if (!(entity instanceof LivingEntity living) || !living.isValid() || living.isDead())
+            return false;
+
+        if (entity.getPersistentDataContainer().has(bossKey, PersistentDataType.BYTE))
+            return false;
+        if (entity.getPersistentDataContainer().has(minionKey, PersistentDataType.BYTE))
+            return false;
+
+        if (plugin.summonerKit() != null) {
+            Byte summonMark = entity.getPersistentDataContainer().get(plugin.summonerKit().summonMarkKey(),
+                    PersistentDataType.BYTE);
+            if (summonMark != null && summonMark == (byte) 1)
+                return true;
+        }
+
+        if (plugin.cloneKit() != null) {
+            Byte cloneMark = entity.getPersistentDataContainer().get(plugin.cloneKit().cloneMarkKey(),
+                    PersistentDataType.BYTE);
+            if (cloneMark != null && cloneMark == (byte) 1)
+                return true;
+        }
+
+        return false;
+    }
+
+    private boolean isValidBossMobTarget(LivingEntity target) {
+        if (target == null || !target.isValid() || target.isDead())
+            return false;
+        if (!isSummonedOrCloneAlly(target))
+            return false;
+
+        if (!active || duelCenter == null || duelCenter.getWorld() == null)
+            return true;
+        if (!target.getWorld().getUID().equals(duelCenter.getWorld().getUID()))
+            return false;
+
+        double maxDist = (DUEL_RADIUS + 8.0) * (DUEL_RADIUS + 8.0);
+        return target.getLocation().distanceSquared(duelCenter) <= maxDist;
+    }
+
+    private boolean isValidBossCombatTarget(LivingEntity target) {
+        if (target == null)
+            return false;
+        if (target instanceof Player player)
+            return isValidDuelTarget(player);
+        return isValidBossMobTarget(target);
+    }
+
+    private LivingEntity findNearestMobAllyTarget(Zombie boss, double radius) {
+        LivingEntity best = null;
+        double bestDist = radius * radius;
+
+        for (Entity entity : boss.getWorld().getNearbyEntities(boss.getLocation(), radius, radius, radius)) {
+            if (!(entity instanceof LivingEntity living))
+                continue;
+            if (!isValidBossMobTarget(living))
+                continue;
+
+            double dist = living.getLocation().distanceSquared(boss.getLocation());
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = living;
+            }
+        }
+
+        return best;
+    }
+
+    private LivingEntity pickCombatTarget(Zombie boss) {
+        if (boss == null || boss.isDead())
+            return null;
+
+        LivingEntity current = (boss.getTarget() instanceof LivingEntity living) ? living : null;
+        if (isValidBossMobTarget(current)) {
+            double keepDist = boss.getLocation().distanceSquared(current.getLocation());
+            if (keepDist <= 20.0 * 20.0)
+                return current;
+        }
+
+        LivingEntity mobTarget = findNearestMobAllyTarget(boss, 22.0);
+        Player playerTarget = pickSmartTarget(boss);
+
+        if (mobTarget == null)
+            return playerTarget;
+        if (playerTarget == null)
+            return mobTarget;
+
+        double mobDist = boss.getLocation().distanceSquared(mobTarget.getLocation());
+        double playerDist = boss.getLocation().distanceSquared(playerTarget.getLocation());
+        if (mobDist <= playerDist + 9.0)
+            return mobTarget;
+        return playerTarget;
+    }
+
+    private LivingEntity resolveCombatPetDamager(Entity damager) {
+        if (damager instanceof LivingEntity living)
+            return living;
+
+        if (damager instanceof Projectile projectile && projectile.getShooter() instanceof LivingEntity shooter)
+            return shooter;
+
+        return null;
+    }
+
     private Zombie getBoss() {
         if (bossUuid == null)
             return null;
@@ -1331,7 +1447,10 @@ public class BossDuelManager implements Listener {
         if (killer != null) {
             long reward = 500 + rng.nextInt(501);
             plugin.econ().give(killer, reward);
-            plugin.progress().addPlayerExp(killer, 20);
+            int playerExp = Math.max(0, plugin.getConfig().getInt("player_progress.kill_exp.boss", 30));
+            if (playerExp > 0) {
+                plugin.progress().addPlayerExp(killer, playerExp);
+            }
             for (Player p : Bukkit.getOnlinePlayers()) {
                 p.sendMessage("§dИгрок " + killer.getName() + " победил ?????");
             }
@@ -1357,12 +1476,12 @@ public class BossDuelManager implements Listener {
         if (!active || stage != Stage.FIGHT)
             return;
 
-        Player smartTarget = pickSmartTarget(z);
+        LivingEntity smartTarget = pickCombatTarget(z);
         if (smartTarget == null)
             return;
 
-        if (!(e.getTarget() instanceof Player current)
-                || !isValidDuelTarget(current)
+        if (!(e.getTarget() instanceof LivingEntity current)
+                || !isValidBossCombatTarget(current)
                 || !current.getUniqueId().equals(smartTarget.getUniqueId())) {
             e.setCancelled(true);
             z.setTarget(smartTarget);
@@ -1377,6 +1496,13 @@ public class BossDuelManager implements Listener {
             return;
         if (!z.getPersistentDataContainer().has(bossKey, PersistentDataType.BYTE))
             return;
+
+        LivingEntity petDamager = resolveCombatPetDamager(e.getDamager());
+        if (petDamager != null && !(petDamager instanceof Player) && isValidBossMobTarget(petDamager)) {
+            equipBossWeaponIfNeeded(z);
+            z.setTarget(petDamager);
+            return;
+        }
 
         if (!(e.getDamager() instanceof Player p))
             return;
@@ -1726,6 +1852,205 @@ public class BossDuelManager implements Listener {
         }
 
         boss.setVelocity(impulse);
+    }
+
+    private boolean tryStartUnarmedCombo(Zombie boss, LivingEntity target, long now) {
+        if (boss == null || target == null)
+            return false;
+        if (dashPreparing || unarmedComboActive)
+            return false;
+        if (!isBossUnarmed(boss))
+            return false;
+        if (now < nextUnarmedComboAtMillis)
+            return false;
+        if (!boss.isOnGround())
+            return false;
+
+        double dist = boss.getLocation().distance(target.getLocation());
+        if (dist < 2.5 || dist > 16.0)
+            return false;
+
+        unarmedComboActive = true;
+        dashPreparing = true;
+
+        UUID initialTargetId = target.getUniqueId();
+
+        // Шаг 1: отпрыгивание назад
+        Vector away = boss.getLocation().toVector().subtract(target.getLocation().toVector()).setY(0.0);
+        if (away.lengthSquared() < 0.0001) {
+            away = new Vector(0, 0, 1);
+        }
+        away.normalize();
+        boss.setVelocity(away.multiply(0.95).setY(0.28));
+
+        Location fx = boss.getLocation().clone().add(0, 1.0, 0);
+        boss.getWorld().spawnParticle(Particle.CLOUD, fx, 16, 0.35, 0.2, 0.35, 0.02);
+        boss.getWorld().spawnParticle(Particle.SMOKE, fx, 14, 0.32, 0.2, 0.32, 0.01);
+        boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_ZOMBIE_ATTACK_IRON_DOOR, 1.0f, 0.75f);
+
+        // Шаг 2: телеграф атаки для защиты
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!active || stage != Stage.FIGHT)
+                return;
+            Zombie liveBoss = getBoss();
+            if (liveBoss == null || liveBoss.isDead())
+                return;
+
+            LivingEntity liveTarget = resolveComboTarget(initialTargetId, liveBoss);
+            if (liveTarget == null)
+                return;
+
+            Location center = liveBoss.getLocation().clone().add(0, 0.2, 0);
+            for (int i = 0; i < 36; i++) {
+                double angle = (Math.PI * 2.0 * i) / 36.0;
+                double x = Math.cos(angle) * 1.9;
+                double z = Math.sin(angle) * 1.9;
+                liveBoss.getWorld().spawnParticle(Particle.CRIT,
+                        center.getX() + x,
+                        center.getY() + 0.3,
+                        center.getZ() + z,
+                        1, 0.0, 0.0, 0.0, 0.0);
+            }
+            liveBoss.getWorld().spawnParticle(Particle.SWEEP_ATTACK, center, 10, 0.6, 0.15, 0.6, 0.01);
+            liveBoss.getWorld().playSound(center, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, 1.0f, 0.7f);
+            liveBoss.getWorld().playSound(liveTarget.getLocation(), Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.9f, 0.6f);
+        }, 8L);
+
+        // Шаг 3: резкий скользящий рывок в цель
+        Bukkit.getScheduler().runTaskLater(plugin, () -> launchUnarmedComboSlide(initialTargetId), 16L);
+        return true;
+    }
+
+    private void launchUnarmedComboSlide(UUID targetId) {
+        if (!active || stage != Stage.FIGHT)
+            return;
+
+        Zombie boss = getBoss();
+        if (boss == null || boss.isDead()) {
+            finishUnarmedCombo(3500L);
+            return;
+        }
+
+        LivingEntity target = resolveComboTarget(targetId, boss);
+        if (target == null) {
+            finishUnarmedCombo(3000L);
+            return;
+        }
+
+        boss.setTarget(target);
+        Vector dir = target.getLocation().toVector().subtract(boss.getLocation().toVector()).setY(0.0);
+        if (dir.lengthSquared() < 0.0001) {
+            finishUnarmedCombo(2500L);
+            return;
+        }
+
+        Vector slide = dir.normalize().multiply(1.72).setY(0.0);
+        boss.setVelocity(slide);
+
+        Location fx = boss.getLocation().clone().add(0, 0.4, 0);
+        boss.getWorld().spawnParticle(Particle.CLOUD, fx, 18, 0.45, 0.25, 0.45, 0.02);
+        boss.getWorld().spawnParticle(Particle.CRIT, fx, 16, 0.35, 0.2, 0.35, 0.05);
+        boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_ZOMBIE_ATTACK_WOODEN_DOOR, 1.1f, 0.85f);
+
+        Bukkit.getScheduler().runTaskLater(plugin, () -> doUnarmedComboFlurry(targetId, 0), 7L);
+    }
+
+    private void doUnarmedComboFlurry(UUID targetId, int hitIndex) {
+        if (!active || stage != Stage.FIGHT) {
+            finishUnarmedCombo(4000L);
+            return;
+        }
+
+        Zombie boss = getBoss();
+        if (boss == null || boss.isDead()) {
+            finishUnarmedCombo(4000L);
+            return;
+        }
+
+        LivingEntity target = resolveComboTarget(targetId, boss);
+        if (target == null) {
+            finishUnarmedCombo(3200L);
+            return;
+        }
+
+        boss.setTarget(target);
+
+        if (hitIndex >= 5) {
+            executeUnarmedComboFinisher(boss, target);
+            finishUnarmedCombo(10000L + rng.nextInt(2500));
+            return;
+        }
+
+        double dist = boss.getLocation().distance(target.getLocation());
+        if (dist <= 3.6) {
+            target.damage(2.2, boss);
+            Location hitFx = target.getLocation().clone().add(0, 1.0, 0);
+            target.getWorld().spawnParticle(Particle.SWEEP_ATTACK, hitFx, 4, 0.25, 0.2, 0.25, 0.01);
+            target.getWorld().spawnParticle(Particle.CRIT, hitFx, 8, 0.28, 0.22, 0.28, 0.04);
+            target.getWorld().playSound(hitFx, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.9f, 1.25f);
+            target.getWorld().playSound(hitFx, Sound.ENTITY_ZOMBIE_ATTACK_WOODEN_DOOR, 0.55f, 1.5f);
+        } else {
+            Vector chase = target.getLocation().toVector().subtract(boss.getLocation().toVector()).setY(0.0);
+            if (chase.lengthSquared() > 0.0001) {
+                boss.setVelocity(chase.normalize().multiply(0.52).setY(0.0));
+            }
+        }
+
+        Bukkit.getScheduler().runTaskLater(plugin, () -> doUnarmedComboFlurry(targetId, hitIndex + 1), 4L);
+    }
+
+    private void executeUnarmedComboFinisher(Zombie boss, LivingEntity target) {
+        if (boss == null || target == null || target.isDead() || !target.isValid())
+            return;
+
+        Vector knock = target.getLocation().toVector().subtract(boss.getLocation().toVector()).setY(0.0);
+        if (knock.lengthSquared() < 0.0001) {
+            knock = new Vector(0, 0, 1);
+        }
+        knock.normalize();
+
+        target.damage(6.0, boss);
+        target.setVelocity(knock.multiply(1.55).setY(0.45));
+
+        Location fx = target.getLocation().clone().add(0, 0.9, 0);
+        target.getWorld().spawnParticle(Particle.EXPLOSION, fx, 2, 0.25, 0.18, 0.25, 0.02);
+        target.getWorld().spawnParticle(Particle.CLOUD, fx, 20, 0.45, 0.25, 0.45, 0.03);
+        target.getWorld().spawnParticle(Particle.CRIT, fx, 14, 0.35, 0.24, 0.35, 0.08);
+        target.getWorld().playSound(fx, Sound.ENTITY_GENERIC_EXPLODE, 0.85f, 1.2f);
+        target.getWorld().playSound(fx, Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 1.0f, 0.8f);
+    }
+
+    private LivingEntity resolveComboTarget(UUID targetId, Zombie boss) {
+        if (boss == null)
+            return null;
+
+        if (targetId != null) {
+            Entity direct = Bukkit.getEntity(targetId);
+            if (direct instanceof LivingEntity living
+                    && isValidBossCombatTarget(living)
+                    && living.getWorld().getUID().equals(boss.getWorld().getUID())) {
+                return living;
+            }
+        }
+
+        return pickCombatTarget(boss);
+    }
+
+    private boolean isBossUnarmed(Zombie boss) {
+        if (boss == null)
+            return false;
+        EntityEquipment eq = boss.getEquipment();
+        if (eq == null)
+            return true;
+        ItemStack hand = eq.getItemInMainHand();
+        return hand == null || hand.getType().isAir();
+    }
+
+    private void finishUnarmedCombo(long cooldownMs) {
+        unarmedComboActive = false;
+        dashPreparing = false;
+        long cd = Math.max(2500L, cooldownMs);
+        nextUnarmedComboAtMillis = System.currentTimeMillis() + cd;
     }
 
     private void equipBossWeaponIfNeeded(Zombie boss) {

@@ -497,6 +497,14 @@ public class MiniBossManager implements Listener {
         if (mark == null || mark != (byte) 1)
             return;
 
+        Player killer = e.getEntity().getKiller();
+        if (killer != null) {
+            int playerExp = Math.max(0, plugin.getConfig().getInt("player_progress.kill_exp.mini_boss", 12));
+            if (playerExp > 0) {
+                plugin.progress().addPlayerExp(killer, playerExp);
+            }
+        }
+
         UUID ownerId = readOwnerId(z);
         if (ownerId != null) {
             ownerToMiniBoss.remove(ownerId);
