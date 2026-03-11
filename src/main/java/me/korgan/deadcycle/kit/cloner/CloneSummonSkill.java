@@ -1,45 +1,44 @@
-package me.korgan.deadcycle.kit;
+package me.korgan.deadcycle.kit.cloner;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.KitManager;
+import me.korgan.deadcycle.kit.Skill;
+import me.korgan.deadcycle.kit.SkillManager;
 import org.bukkit.entity.Player;
 
-public class SummonerSummonSkill implements Skill {
+public class CloneSummonSkill implements Skill {
 
     private final DeadCyclePlugin plugin;
     private final SkillManager skillManager;
-    private final SummonerKitManager.SummonType summonType;
 
     private int manaCost;
     private long cooldownMs;
     private long cooldownReducePerLevelMs;
     private long minCooldownMs;
 
-    public SummonerSummonSkill(DeadCyclePlugin plugin, SkillManager skillManager,
-            SummonerKitManager.SummonType summonType) {
+    public CloneSummonSkill(DeadCyclePlugin plugin, SkillManager skillManager) {
         this.plugin = plugin;
         this.skillManager = skillManager;
-        this.summonType = summonType;
         loadConfig();
     }
 
     private void loadConfig() {
-        String base = "skills.summoner." + summonType.configKey();
-        this.manaCost = Math.max(1, plugin.getConfig().getInt(base + ".xp_cost", 40));
-        this.cooldownMs = Math.max(300L, plugin.getConfig().getLong(base + ".cooldown_ms", 3500L));
+        this.manaCost = Math.max(1, plugin.getConfig().getInt("skills.cloner.summon.xp_cost", 50));
+        this.cooldownMs = Math.max(200L, plugin.getConfig().getLong("skills.cloner.summon.cooldown_ms", 3000L));
         this.cooldownReducePerLevelMs = Math.max(0L,
-                plugin.getConfig().getLong(base + ".cooldown_reduce_per_level_ms", 120L));
-        this.minCooldownMs = Math.max(300L,
-                plugin.getConfig().getLong(base + ".cooldown_min_ms", 1200L));
+                plugin.getConfig().getLong("skills.cloner.summon.cooldown_reduce_per_level_ms", 120L));
+        this.minCooldownMs = Math.max(250L,
+                plugin.getConfig().getLong("skills.cloner.summon.cooldown_min_ms", 1000L));
     }
 
     @Override
     public String getId() {
-        return summonType.skillId();
+        return "clone_summon";
     }
 
     @Override
     public String getDisplayName() {
-        return summonType.display();
+        return "§bПризыв Клона";
     }
 
     @Override
@@ -49,7 +48,7 @@ public class SummonerSummonSkill implements Skill {
 
     @Override
     public long getCooldownMs(Player p) {
-        int level = plugin.progress().getSummonerLevel(p.getUniqueId());
+        int level = plugin.progress().getClonerLevel(p.getUniqueId());
         long reduced = cooldownMs - Math.max(0, level - 1) * cooldownReducePerLevelMs;
         return Math.max(minCooldownMs, reduced);
     }
@@ -58,12 +57,11 @@ public class SummonerSummonSkill implements Skill {
     public boolean canUse(Player p) {
         if (p == null || !p.isOnline())
             return false;
-        if (plugin.kit().getKit(p.getUniqueId()) != KitManager.Kit.SUMMONER)
-            return false;
-        if (plugin.summonerKit() == null)
+        if (plugin.kit().getKit(p.getUniqueId()) != KitManager.Kit.CLONER)
             return false;
 
-        String summonError = plugin.summonerKit().getSummonError(p, summonType);
+        String summonError = plugin.cloneKit() != null ? plugin.cloneKit().getSummonError(p)
+                : "§cСистема клонов недоступна.";
         if (summonError != null)
             return false;
 
@@ -74,13 +72,13 @@ public class SummonerSummonSkill implements Skill {
     public String getErrorMessage(Player p) {
         if (p == null || !p.isOnline())
             return "§cИгрок не в сети.";
-        if (plugin.kit().getKit(p.getUniqueId()) != KitManager.Kit.SUMMONER)
-            return "§cЭтот навык доступен только киту Призыватель.";
+        if (plugin.kit().getKit(p.getUniqueId()) != KitManager.Kit.CLONER)
+            return "§cЭтот навык доступен только киту Клонер.";
 
-        if (plugin.summonerKit() == null)
-            return "§cСистема призыва недоступна.";
+        if (plugin.cloneKit() == null)
+            return "§cСистема клонов недоступна.";
 
-        String summonError = plugin.summonerKit().getSummonError(p, summonType);
+        String summonError = plugin.cloneKit().getSummonError(p);
         if (summonError != null)
             return summonError;
 
@@ -92,10 +90,10 @@ public class SummonerSummonSkill implements Skill {
 
     @Override
     public void activate(Player p) {
-        if (p == null || !p.isOnline() || plugin.summonerKit() == null)
+        if (p == null || !p.isOnline() || plugin.cloneKit() == null)
             return;
 
-        boolean ok = plugin.summonerKit().summon(p, summonType);
+        boolean ok = plugin.cloneKit().summonClone(p);
         if (!ok)
             return;
 

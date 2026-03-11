@@ -1,11 +1,13 @@
-package me.korgan.deadcycle.kit;
+package me.korgan.deadcycle.kit.berserk;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.KitManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
+import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
@@ -717,6 +719,6 @@ public class BerserkListener implements Listener {
     private PotionEffectType type(String key) {
         if (key == null || key.isBlank())
             return null;
-        return PotionEffectType.getByKey(NamespacedKey.minecraft(key.toLowerCase(Locale.ROOT)));
+        return Registry.EFFECT.get(NamespacedKey.minecraft(key.toLowerCase(Locale.ROOT)));
     }
 }

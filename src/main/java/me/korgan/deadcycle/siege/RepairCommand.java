@@ -2,7 +2,6 @@ package me.korgan.deadcycle.siege;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
 import me.korgan.deadcycle.kit.KitManager;
-import org.bukkit.ChatColor;
 import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
@@ -26,12 +25,12 @@ public class RepairCommand implements CommandExecutor {
         // только BUILDER
         KitManager.Kit kit = plugin.kit().getKit(p.getUniqueId());
         if (kit != KitManager.Kit.BUILDER) {
-            p.sendMessage(ChatColor.RED + "Ремонт доступен только киту BUILDER.");
+            p.sendMessage("§cРемонт доступен только киту BUILDER.");
             return true;
         }
 
         if (!plugin.base().isEnabled()) {
-            p.sendMessage(ChatColor.RED + "База не включена.");
+            p.sendMessage("§cБаза не включена.");
             return true;
         }
 

@@ -2,8 +2,9 @@ package me.korgan.deadcycle.siege;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
 import me.korgan.deadcycle.kit.KitManager;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -13,6 +14,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitTask;
@@ -24,7 +26,21 @@ public class RepairGUI implements Listener {
     private final DeadCyclePlugin plugin;
     private final BlockHealthManager blocks;
 
-    private static final String TITLE = ChatColor.DARK_GREEN + "Ремонт базы";
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+    private static final Component TITLE = LEGACY.deserialize("§2Ремонт базы");
+
+    private static final class RepairGuiHolder implements InventoryHolder {
+        private Inventory inventory;
+
+        @Override
+        public Inventory getInventory() {
+            return inventory;
+        }
+
+        private void setInventory(Inventory inventory) {
+            this.inventory = inventory;
+        }
+    }
 
     private final Map<UUID, BukkitTask> tasks = new HashMap<>();
     private final Map<UUID, Integer> sessionTotal = new HashMap<>();
@@ -36,21 +52,27 @@ public class RepairGUI implements Listener {
     }
 
     public void open(Player p) {
-        Inventory inv = Bukkit.createInventory(null, 27, TITLE);
+        RepairGuiHolder holder = new RepairGuiHolder();
+        Inventory inv = Bukkit.createInventory(holder, 27, TITLE);
+        holder.setInventory(inv);
         build(inv, p);
         p.openInventory(inv);
+    }
+
+    private boolean isRepairInventory(Inventory inventory) {
+        return inventory != null && inventory.getHolder() instanceof RepairGuiHolder;
     }
 
     private void build(Inventory inv, Player p) {
         inv.clear();
 
-        inv.setItem(11, item(Material.ANVIL, ChatColor.GREEN + "Начать / Остановить ремонт",
-                ChatColor.GRAY + "Чинит базу автоматически.",
-                ChatColor.GRAY + "Сломано: " + ChatColor.RED + "красный",
-                ChatColor.GRAY + "Повреждено: " + ChatColor.GOLD + "оранжевый",
-                ChatColor.GRAY + "Чинится: " + ChatColor.WHITE + "белый"));
+        inv.setItem(11, item(Material.ANVIL, "§aНачать / Остановить ремонт",
+                "§7Чинит базу автоматически.",
+                "§7Сломано: §cкрасный",
+                "§7Повреждено: §6оранжевый",
+                "§7Чинится: §fбелый"));
 
-        inv.setItem(15, item(Material.BARRIER, ChatColor.RED + "Закрыть"));
+        inv.setItem(15, item(Material.BARRIER, "§cЗакрыть"));
         inv.setItem(13, makeInfoItem(p));
     }
 
@@ -69,24 +91,28 @@ public class RepairGUI implements Listener {
         boolean running = tasks.containsKey(p.getUniqueId());
 
         return item(Material.PAPER,
-                ChatColor.YELLOW + "Статус ремонта",
-                ChatColor.GRAY + "Сломано: " + ChatColor.RED + broken,
-                ChatColor.GRAY + "Повреждено: " + ChatColor.GOLD + damaged,
-                ChatColor.GRAY + "Не хватает HP: " + ChatColor.WHITE + missing,
+                "§eСтатус ремонта",
+                "§7Сломано: §c" + broken,
+                "§7Повреждено: §6" + damaged,
+                "§7Не хватает HP: §f" + missing,
                 "",
-                ChatColor.GRAY + "Прогресс сессии: " + ChatColor.AQUA + String.format(Locale.US, "%.1f%%", percent),
-                ChatColor.GRAY + "Очки базы: " + ChatColor.WHITE + plugin.baseResources().getBasePoints(),
-                ChatColor.GRAY + "Режим: "
-                        + (running ? (ChatColor.GREEN + "Ремонт идёт") : (ChatColor.RED + "Остановлен")));
+                "§7Прогресс сессии: §b" + String.format(Locale.US, "%.1f%%", percent),
+                "§7Очки базы: §f" + plugin.baseResources().getBasePoints(),
+                "§7Режим: " + (running ? "§aРемонт идёт" : "§cОстановлен"));
     }
 
     private ItemStack item(Material mat, String name, String... lore) {
         ItemStack it = new ItemStack(mat);
         ItemMeta im = it.getItemMeta();
         if (im != null) {
-            im.setDisplayName(name);
-            if (lore != null && lore.length > 0)
-                im.setLore(Arrays.asList(lore));
+            im.displayName(LEGACY.deserialize(name));
+            if (lore != null && lore.length > 0) {
+                List<Component> loreComponents = new ArrayList<>(lore.length);
+                for (String line : lore) {
+                    loreComponents.add(LEGACY.deserialize(line));
+                }
+                im.lore(loreComponents);
+            }
             it.setItemMeta(im);
         }
         return it;
@@ -97,10 +123,11 @@ public class RepairGUI implements Listener {
         if (!(e.getWhoClicked() instanceof Player p))
             return;
 
-        String title = e.getView().getTitle();
-        if (title == null)
+        Inventory top = e.getView().getTopInventory();
+        if (!isRepairInventory(top))
             return;
-        if (!ChatColor.stripColor(title).equalsIgnoreCase(ChatColor.stripColor(TITLE)))
+
+        if (e.getRawSlot() < 0 || e.getRawSlot() >= top.getSize())
             return;
 
         e.setCancelled(true);
@@ -116,7 +143,7 @@ public class RepairGUI implements Listener {
 
         if (slot == 11) {
             toggleRepair(p);
-            build(e.getInventory(), p);
+            build(top, p);
         }
     }
 
@@ -124,17 +151,17 @@ public class RepairGUI implements Listener {
         UUID id = p.getUniqueId();
 
         if (tasks.containsKey(id)) {
-            stopRepair(p, ChatColor.YELLOW + "Ремонт остановлен.");
+            stopRepair(p, "§eРемонт остановлен.");
             return;
         }
 
         if (!plugin.base().isEnabled()) {
-            p.sendMessage(ChatColor.RED + "База выключена в конфиге.");
+            p.sendMessage("§cБаза выключена в конфиге.");
             return;
         }
 
         if (!plugin.base().isOnBase(p.getLocation())) {
-            p.sendMessage(ChatColor.RED + "Ты должен быть на базе, чтобы чинить.");
+            p.sendMessage("§cТы должен быть на базе, чтобы чинить.");
             return;
         }
 
@@ -143,7 +170,7 @@ public class RepairGUI implements Listener {
 
         int missing = blocks.getTotalMissingHpOnBase(center, radius);
         if (missing <= 0) {
-            p.sendMessage(ChatColor.GREEN + "На базе нечего чинить.");
+            p.sendMessage("§aНа базе нечего чинить.");
             return;
         }
 
@@ -162,7 +189,7 @@ public class RepairGUI implements Listener {
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> tick(p), 0L, tickPeriod);
         tasks.put(id, task);
 
-        p.sendMessage(ChatColor.GREEN + "Починка началась.");
+        p.sendMessage("§aПочинка началась.");
         p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 0.25f, 1.2f);
     }
 
@@ -175,7 +202,7 @@ public class RepairGUI implements Listener {
         }
 
         if (!plugin.base().isEnabled() || !plugin.base().isOnBase(p.getLocation())) {
-            stopRepair(p, ChatColor.RED + "Ты вышел с базы — ремонт остановлен.");
+            stopRepair(p, "§cТы вышел с базы — ремонт остановлен.");
             return;
         }
 
@@ -184,7 +211,7 @@ public class RepairGUI implements Listener {
 
         int missing = blocks.getTotalMissingHpOnBase(center, radius);
         if (missing <= 0) {
-            stopRepair(p, ChatColor.GREEN + "Ремонт завершён! Всё целое.");
+            stopRepair(p, "§aРемонт завершён! Всё целое.");
             return;
         }
 
@@ -196,7 +223,7 @@ public class RepairGUI implements Listener {
 
         // корректное списание очков базы
         if (!plugin.baseResources().spendPoints(pointsPerTick)) {
-            stopRepair(p, ChatColor.RED + "Недостаточно очков базы для ремонта.");
+            stopRepair(p, "§cНедостаточно очков базы для ремонта.");
             return;
         }
 
@@ -209,7 +236,7 @@ public class RepairGUI implements Listener {
 
         if (repairedNow <= 0) {
             // чтобы не сжигать очки бесконечно
-            stopRepair(p, ChatColor.RED + "Ремонт не может продолжаться (нет подходящих блоков).");
+            stopRepair(p, "§cРемонт не может продолжаться (нет подходящих блоков).");
             return;
         }
 
@@ -226,17 +253,16 @@ public class RepairGUI implements Listener {
         int rep = sessionRepaired.getOrDefault(id, 0);
         double percent = Math.min(100.0, (rep * 100.0) / Math.max(1, total));
 
-        p.sendActionBar(ChatColor.GREEN + "Ремонт: " + ChatColor.AQUA + String.format(Locale.US, "%.1f%%", percent)
-                + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Очки базы: " + ChatColor.WHITE
-                + plugin.baseResources().getBasePoints());
+        String actionBar = "§aРемонт: §b" + String.format(Locale.US, "%.1f%%", percent)
+                + "§7 | §eОчки базы: §f" + plugin.baseResources().getBasePoints();
+        p.sendActionBar(LEGACY.deserialize(actionBar));
 
         p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 0.18f, 1.6f);
 
         // если GUI открыт — обновим инфо
-        String t = p.getOpenInventory() != null ? p.getOpenInventory().getTitle() : null;
-        if (t != null && ChatColor.stripColor(t).equalsIgnoreCase(ChatColor.stripColor(TITLE))) {
-            Inventory inv = p.getOpenInventory().getTopInventory();
-            inv.setItem(13, makeInfoItem(p));
+        Inventory top = p.getOpenInventory() != null ? p.getOpenInventory().getTopInventory() : null;
+        if (isRepairInventory(top)) {
+            top.setItem(13, makeInfoItem(p));
         }
     }
 
@@ -262,10 +288,9 @@ public class RepairGUI implements Listener {
 
         p.sendMessage(msg);
 
-        String title = p.getOpenInventory() != null ? p.getOpenInventory().getTitle() : null;
-        if (title != null && ChatColor.stripColor(title).equalsIgnoreCase(ChatColor.stripColor(TITLE))) {
-            Inventory inv = p.getOpenInventory().getTopInventory();
-            inv.setItem(13, makeInfoItem(p));
+        Inventory top = p.getOpenInventory() != null ? p.getOpenInventory().getTopInventory() : null;
+        if (isRepairInventory(top)) {
+            top.setItem(13, makeInfoItem(p));
         }
     }
 
@@ -287,11 +312,7 @@ public class RepairGUI implements Listener {
     public void onClose(InventoryCloseEvent e) {
         if (!(e.getPlayer() instanceof Player))
             return;
-
-        String title = e.getView().getTitle();
-        if (title == null)
-            return;
-        if (!ChatColor.stripColor(title).equalsIgnoreCase(ChatColor.stripColor(TITLE)))
+        if (!isRepairInventory(e.getView().getTopInventory()))
             return;
 
         // ремонт НЕ останавливаем при закрытии (по твоей логике)

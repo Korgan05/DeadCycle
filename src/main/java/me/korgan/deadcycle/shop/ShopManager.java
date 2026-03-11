@@ -1,7 +1,6 @@
 package me.korgan.deadcycle.shop;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
-import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 
 public class ShopManager {
@@ -14,11 +13,11 @@ public class ShopManager {
 
     public void open(Player p) {
         if (!plugin.base().isOnBase(p.getLocation())) {
-            p.sendMessage(ChatColor.RED + "Магазин доступен только на базе!");
+            p.sendMessage("§cМагазин доступен только на базе!");
             return;
         }
 
-        p.sendMessage(ChatColor.YELLOW + "Магазин временно доступен только для покупки.");
-        p.sendMessage(ChatColor.GRAY + "Продажа ресурсов отключена (они нужны базе).");
+        p.sendMessage("§eМагазин временно доступен только для покупки.");
+        p.sendMessage("§7Продажа ресурсов отключена (они нужны базе).");
     }
 }

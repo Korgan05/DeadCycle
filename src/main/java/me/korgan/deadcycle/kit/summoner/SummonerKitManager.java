@@ -1,6 +1,8 @@
-package me.korgan.deadcycle.kit;
+package me.korgan.deadcycle.kit.summoner;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.KitManager;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.DyeColor;
@@ -51,6 +53,8 @@ import java.util.UUID;
 
 public class SummonerKitManager implements Listener {
 
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+
     public enum SummonType {
         WOLF("summoner_wolves", "§aПризыв волков", "wolf", 1),
         PHANTOM("summoner_phantom", "§5Призыв фантома", "phantom", 3),
@@ -97,6 +101,8 @@ public class SummonerKitManager implements Listener {
 
     private final Map<UUID, Set<UUID>> ownerToSummons = new HashMap<>();
     private final Map<UUID, Long> summonExpireAt = new HashMap<>();
+    private final Map<UUID, Double> ownerUpkeepAccumulator = new HashMap<>();
+    private final Map<UUID, Long> ownerUpkeepWarnUntil = new HashMap<>();
 
     private final Map<UUID, UUID> lastHitOwnerByZombie = new HashMap<>();
     private final Map<UUID, Long> lastHitAtByZombie = new HashMap<>();
@@ -116,6 +122,11 @@ public class SummonerKitManager implements Listener {
     private int maxActivePhantoms;
     private int maxActiveGolems;
     private int maxActiveVex;
+
+    private boolean upkeepEnabled;
+    private double upkeepManaPerExtraSummonPerSecond;
+    private int upkeepFreeSummons;
+    private long upkeepWarnCooldownMs;
 
     private int deathWardenUnlockLevel;
     private long deathWardenDurationSec;
@@ -164,6 +175,14 @@ public class SummonerKitManager implements Listener {
         this.maxActiveGolems = Math.max(1, plugin.getConfig().getInt("summoner.max_active.golem", 2));
         this.maxActiveVex = Math.max(1, plugin.getConfig().getInt("summoner.max_active.vex", 6));
 
+        this.upkeepEnabled = plugin.getConfig().getBoolean("summoner.upkeep.enabled", false);
+        this.upkeepManaPerExtraSummonPerSecond = Math.max(0.0,
+                plugin.getConfig().getDouble("summoner.upkeep.mana_per_extra_summon_per_second", 0.0));
+        int configuredFreeSummons = plugin.getConfig().getInt("summoner.upkeep.free_summons", -1);
+        this.upkeepFreeSummons = (configuredFreeSummons < 0) ? Integer.MAX_VALUE : Math.max(0, configuredFreeSummons);
+        this.upkeepWarnCooldownMs = Math.max(500L,
+                plugin.getConfig().getLong("summoner.upkeep.warn_cooldown_ms", 5000L));
+
         this.deathWardenUnlockLevel = 10;
         this.deathWardenDurationSec = Math.max(5L,
                 plugin.getConfig().getLong("summoner.death_warden.duration_seconds", 30L));
@@ -204,6 +223,8 @@ public class SummonerKitManager implements Listener {
         summonExpireAt.clear();
         lastHitOwnerByZombie.clear();
         lastHitAtByZombie.clear();
+        ownerUpkeepAccumulator.clear();
+        ownerUpkeepWarnUntil.clear();
     }
 
     public void resetAll() {
@@ -212,6 +233,8 @@ public class SummonerKitManager implements Listener {
         summonExpireAt.clear();
         lastHitOwnerByZombie.clear();
         lastHitAtByZombie.clear();
+        ownerUpkeepAccumulator.clear();
+        ownerUpkeepWarnUntil.clear();
     }
 
     public boolean isEnabled() {
@@ -470,6 +493,12 @@ public class SummonerKitManager implements Listener {
                 continue;
             }
 
+            tickOwnerUpkeep(owner, ownerId, summons);
+            if (summons.isEmpty()) {
+                ownerToSummons.remove(ownerId);
+                continue;
+            }
+
             for (Mob summon : summons) {
                 long expireAt = summonExpireAt.getOrDefault(summon.getUniqueId(), 0L);
                 if (expireAt > 0L && now >= expireAt) {
@@ -512,8 +541,11 @@ public class SummonerKitManager implements Listener {
 
     private void removeOwnerSummons(UUID ownerId) {
         Set<UUID> ids = ownerToSummons.remove(ownerId);
-        if (ids == null)
+        if (ids == null) {
+            ownerUpkeepAccumulator.remove(ownerId);
+            ownerUpkeepWarnUntil.remove(ownerId);
             return;
+        }
 
         for (UUID id : ids) {
             Entity entity = Bukkit.getEntity(id);
@@ -522,6 +554,9 @@ public class SummonerKitManager implements Listener {
             }
             cleanupSummonRuntime(id, ownerId);
         }
+
+        ownerUpkeepAccumulator.remove(ownerId);
+        ownerUpkeepWarnUntil.remove(ownerId);
     }
 
     private void cleanupSummonRuntime(UUID entityId, UUID ownerId) {
@@ -568,6 +603,72 @@ public class SummonerKitManager implements Listener {
         return result;
     }
 
+    private void tickOwnerUpkeep(Player owner, UUID ownerId, List<Mob> summons) {
+        if (!upkeepEnabled || upkeepManaPerExtraSummonPerSecond <= 0.0)
+            return;
+        if (plugin.mana() == null)
+            return;
+
+        int extra = Math.max(0, summons.size() - upkeepFreeSummons);
+        if (extra <= 0) {
+            ownerUpkeepAccumulator.put(ownerId, 0.0);
+            return;
+        }
+
+        double acc = ownerUpkeepAccumulator.getOrDefault(ownerId, 0.0);
+        acc += upkeepManaPerExtraSummonPerSecond * extra * 0.5;
+        int toSpend = (int) Math.floor(acc);
+
+        if (toSpend <= 0) {
+            ownerUpkeepAccumulator.put(ownerId, acc);
+            return;
+        }
+
+        if (plugin.mana().consumeXp(owner, toSpend)) {
+            ownerUpkeepAccumulator.put(ownerId, Math.max(0.0, acc - toSpend));
+            return;
+        }
+
+        ownerUpkeepAccumulator.put(ownerId, Math.min(1.0, acc));
+        removeOneExtraSummon(ownerId, owner, summons);
+        maybeSendUpkeepWarning(owner, ownerId);
+    }
+
+    private void removeOneExtraSummon(UUID ownerId, Player owner, List<Mob> summons) {
+        if (summons.isEmpty())
+            return;
+
+        Mob victim = null;
+        double bestDist = -1.0;
+        Location ownerLoc = owner.getLocation();
+
+        for (Mob summon : summons) {
+            double dist = summon.getLocation().distanceSquared(ownerLoc);
+            if (dist > bestDist) {
+                bestDist = dist;
+                victim = summon;
+            }
+        }
+
+        if (victim == null)
+            return;
+
+        UUID summonId = victim.getUniqueId();
+        victim.remove();
+        cleanupSummonRuntime(summonId, ownerId);
+        summons.remove(victim);
+    }
+
+    private void maybeSendUpkeepWarning(Player owner, UUID ownerId) {
+        long now = System.currentTimeMillis();
+        long until = ownerUpkeepWarnUntil.getOrDefault(ownerId, 0L);
+        if (now < until)
+            return;
+
+        ownerUpkeepWarnUntil.put(ownerId, now + upkeepWarnCooldownMs);
+        owner.sendMessage("§d[Призыватель] §7Недостаточно маны для содержания лишних призывов.");
+    }
+
     private void registerSummon(UUID ownerId, Mob summon, String type, int durationSeconds) {
         ownerToSummons.computeIfAbsent(ownerId, ignored -> new HashSet<>()).add(summon.getUniqueId());
         if (TYPE_DEATH_WARDEN.equalsIgnoreCase(type)) {
@@ -599,7 +700,7 @@ public class SummonerKitManager implements Listener {
         try {
             summonSpawning = true;
             return world.spawn(loc, Wolf.class, wolf -> {
-                wolf.setCustomName("§aВолк призывателя §7" + owner.getName());
+                wolf.customName(LEGACY.deserialize("§aВолк призывателя §7" + owner.getName()));
                 wolf.setCustomNameVisible(false);
                 wolf.setCanPickupItems(false);
                 wolf.setRemoveWhenFarAway(false);
@@ -629,7 +730,7 @@ public class SummonerKitManager implements Listener {
         try {
             summonSpawning = true;
             return world.spawn(aerial, Phantom.class, phantom -> {
-                phantom.setCustomName("§5Фантом призывателя §7" + owner.getName());
+                phantom.customName(LEGACY.deserialize("§5Фантом призывателя §7" + owner.getName()));
                 phantom.setCustomNameVisible(false);
                 phantom.setCanPickupItems(false);
                 phantom.setRemoveWhenFarAway(false);
@@ -654,7 +755,7 @@ public class SummonerKitManager implements Listener {
         try {
             summonSpawning = true;
             return world.spawn(loc, IronGolem.class, golem -> {
-                golem.setCustomName("§fЖелезный голем §7" + owner.getName());
+                golem.customName(LEGACY.deserialize("§fЖелезный голем §7" + owner.getName()));
                 golem.setCustomNameVisible(false);
                 golem.setCanPickupItems(false);
                 golem.setRemoveWhenFarAway(false);
@@ -681,7 +782,7 @@ public class SummonerKitManager implements Listener {
         try {
             summonSpawning = true;
             return world.spawn(aerial, Vex.class, vex -> {
-                vex.setCustomName("§dДух призывателя §7" + owner.getName());
+                vex.customName(LEGACY.deserialize("§dДух призывателя §7" + owner.getName()));
                 vex.setCustomNameVisible(false);
                 vex.setCanPickupItems(false);
                 vex.setRemoveWhenFarAway(false);
@@ -711,7 +812,7 @@ public class SummonerKitManager implements Listener {
         try {
             summonSpawning = true;
             Warden warden = world.spawn(loc, Warden.class, w -> {
-                w.setCustomName("§8Варден мести §7" + owner.getName());
+                w.customName(LEGACY.deserialize("§8Варден мести §7" + owner.getName()));
                 w.setCustomNameVisible(true);
                 w.setCanPickupItems(false);
                 w.setRemoveWhenFarAway(false);

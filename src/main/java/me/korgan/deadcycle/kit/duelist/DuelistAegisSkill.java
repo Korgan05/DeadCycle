@@ -1,6 +1,8 @@
-package me.korgan.deadcycle.kit;
+package me.korgan.deadcycle.kit.duelist;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.Skill;
+import me.korgan.deadcycle.kit.SkillManager;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Particle;

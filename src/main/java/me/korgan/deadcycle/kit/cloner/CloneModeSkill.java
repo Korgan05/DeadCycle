@@ -1,6 +1,9 @@
-package me.korgan.deadcycle.kit;
+package me.korgan.deadcycle.kit.cloner;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.KitManager;
+import me.korgan.deadcycle.kit.Skill;
+import me.korgan.deadcycle.kit.SkillManager;
 import org.bukkit.entity.Player;
 
 public class CloneModeSkill implements Skill {

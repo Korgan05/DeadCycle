@@ -1,9 +1,9 @@
 package me.korgan.deadcycle.siege;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
-import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Zombie;
 
 public class SiegeManager {
@@ -33,7 +33,11 @@ public class SiegeManager {
 
         running = true;
 
-        plugin.getServer().broadcastMessage(ChatColor.DARK_RED + "⚔ Осада началась! Зомби ломают стены...");
+        String message = "§4⚔ Осада началась! Зомби ломают стены...";
+        for (Player online : plugin.getServer().getOnlinePlayers()) {
+            online.sendMessage(message);
+        }
+        plugin.getServer().getConsoleSender().sendMessage(message);
     }
 
     public boolean isRunning() {
@@ -71,7 +75,12 @@ public class SiegeManager {
         if (!running)
             return;
         running = false;
-        plugin.getServer().broadcastMessage(ChatColor.GREEN + "Осада закончилась.");
+
+        String message = "§aОсада закончилась.";
+        for (Player online : plugin.getServer().getOnlinePlayers()) {
+            online.sendMessage(message);
+        }
+        plugin.getServer().getConsoleSender().sendMessage(message);
     }
 
     public void tickZombie(Zombie z, int damage) {
@@ -105,9 +114,12 @@ public class SiegeManager {
         for (int yOff = 0; yOff <= 2; yOff++) {
             Block b = base.clone().add(0, yOff, 0).getBlock();
             Material t = b.getType();
-            if (t.isAir()) continue;
-            if (!t.isSolid()) continue;
-            if (whitelistOnly && !blocks.isBreakable(t)) continue;
+            if (t.isAir())
+                continue;
+            if (!t.isSolid())
+                continue;
+            if (whitelistOnly && !blocks.isBreakable(t))
+                continue;
             return b;
         }
 
@@ -118,9 +130,12 @@ public class SiegeManager {
         for (int yOff = 0; yOff <= 2; yOff++) {
             Block b = alt.clone().add(0, yOff, 0).getBlock();
             Material t = b.getType();
-            if (t.isAir()) continue;
-            if (!t.isSolid()) continue;
-            if (whitelistOnly && !blocks.isBreakable(t)) continue;
+            if (t.isAir())
+                continue;
+            if (!t.isSolid())
+                continue;
+            if (whitelistOnly && !blocks.isBreakable(t))
+                continue;
             return b;
         }
 

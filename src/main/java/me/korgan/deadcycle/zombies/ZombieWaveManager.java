@@ -504,7 +504,7 @@ public class ZombieWaveManager {
                 zombie.getPersistentDataContainer().set(zombieTypeKey, PersistentDataType.STRING, spawnType.id());
 
                 zombie.setCanPickupItems(false);
-                zombie.setBaby(false);
+                zombie.setAdult();
 
                 EntityEquipment eq = zombie.getEquipment();
                 if (eq != null) {

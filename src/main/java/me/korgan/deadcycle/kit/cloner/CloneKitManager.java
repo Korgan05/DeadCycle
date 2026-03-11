@@ -1,6 +1,8 @@
-package me.korgan.deadcycle.kit;
+package me.korgan.deadcycle.kit.cloner;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.KitManager;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -23,6 +25,9 @@ import org.bukkit.util.Vector;
 import java.util.*;
 
 public class CloneKitManager implements Listener {
+
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+    private static final int MAX_BALANCE_LEVEL = 10;
 
     public enum CloneMode {
         BASE_DEFENSE("§aЗащита базы"),
@@ -65,6 +70,9 @@ public class CloneKitManager implements Listener {
     private final Map<UUID, Long> cloneDodgeCooldownUntil = new HashMap<>();
     private final Map<UUID, Location> attackRoamTarget = new HashMap<>();
     private final Map<UUID, Long> attackRoamRetargetAt = new HashMap<>();
+    private final Map<UUID, Double> ownerUpkeepAccumulator = new HashMap<>();
+    private final Map<UUID, Long> ownerUpkeepWarnUntil = new HashMap<>();
+    private final Map<Integer, Integer> maxClonesByLevel = new HashMap<>();
 
     private BukkitTask aiTask;
     private boolean cloneSpawning = false;
@@ -82,7 +90,6 @@ public class CloneKitManager implements Listener {
     private double protectRadius;
     private double attackRadius;
     private int leashOwnerDistance;
-    private int leashBaseDistance;
 
     private int spawnRadiusMin;
     private int spawnRadiusMax;
@@ -103,6 +110,11 @@ public class CloneKitManager implements Listener {
 
     private int attackRoamRadiusMin;
     private int attackRoamRadiusMax;
+
+    private boolean upkeepEnabled;
+    private double upkeepManaPerExtraClonePerSecond;
+    private int upkeepFreeClones;
+    private long upkeepWarnCooldownMs;
 
     public CloneKitManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
@@ -126,7 +138,6 @@ public class CloneKitManager implements Listener {
         this.protectRadius = Math.max(4.0, plugin.getConfig().getDouble("cloner.protect_radius", 16.0));
         this.attackRadius = Math.max(6.0, plugin.getConfig().getDouble("cloner.attack_radius", 28.0));
         this.leashOwnerDistance = Math.max(8, plugin.getConfig().getInt("cloner.leash_owner_distance", 14));
-        this.leashBaseDistance = Math.max(8, plugin.getConfig().getInt("cloner.leash_base_distance", 18));
 
         this.spawnRadiusMin = Math.max(1, plugin.getConfig().getInt("cloner.spawn_radius_min", 1));
         this.spawnRadiusMax = Math.max(spawnRadiusMin + 1,
@@ -160,8 +171,31 @@ public class CloneKitManager implements Listener {
         this.attackRoamRadiusMax = Math.max(attackRoamRadiusMin + 1,
                 plugin.getConfig().getInt("cloner.attack_roam_radius_max", 14));
 
+        loadMaxClonesByLevel();
+
+        this.upkeepEnabled = plugin.getConfig().getBoolean("cloner.upkeep.enabled", false);
+        this.upkeepManaPerExtraClonePerSecond = Math.max(0.0,
+                plugin.getConfig().getDouble("cloner.upkeep.mana_per_extra_clone_per_second", 0.0));
+        int configuredFreeClones = plugin.getConfig().getInt("cloner.upkeep.free_clones", -1);
+        this.upkeepFreeClones = (configuredFreeClones < 0) ? Integer.MAX_VALUE : Math.max(0, configuredFreeClones);
+        this.upkeepWarnCooldownMs = Math.max(500L,
+                plugin.getConfig().getLong("cloner.upkeep.warn_cooldown_ms", 5000L));
+
         if (!enabled) {
             removeAllClones();
+        }
+    }
+
+    private void loadMaxClonesByLevel() {
+        maxClonesByLevel.clear();
+        for (int level = 1; level <= MAX_BALANCE_LEVEL; level++) {
+            int fallback = defaultMaxClonesForLevel(level);
+            int configured = plugin.getConfig().getInt("cloner.max_clones_by_level.l" + level, fallback);
+            if (configured < 0) {
+                maxClonesByLevel.put(level, Integer.MAX_VALUE);
+            } else {
+                maxClonesByLevel.put(level, Math.max(1, configured));
+            }
         }
     }
 
@@ -180,6 +214,8 @@ public class CloneKitManager implements Listener {
         cloneDodgeCooldownUntil.clear();
         attackRoamTarget.clear();
         attackRoamRetargetAt.clear();
+        ownerUpkeepAccumulator.clear();
+        ownerUpkeepWarnUntil.clear();
     }
 
     public void resetAll() {
@@ -193,6 +229,8 @@ public class CloneKitManager implements Listener {
         cloneDodgeCooldownUntil.clear();
         attackRoamTarget.clear();
         attackRoamRetargetAt.clear();
+        ownerUpkeepAccumulator.clear();
+        ownerUpkeepWarnUntil.clear();
     }
 
     public boolean isEnabled() {
@@ -236,14 +274,18 @@ public class CloneKitManager implements Listener {
 
     public int getMaxClones(Player owner) {
         int level = Math.max(1, plugin.progress().getClonerLevel(owner.getUniqueId()));
+        int keyLevel = Math.min(MAX_BALANCE_LEVEL, level);
+        int configured = maxClonesByLevel.getOrDefault(keyLevel, defaultMaxClonesForLevel(keyLevel));
+        return (configured < 0) ? Integer.MAX_VALUE : configured;
+    }
 
-        if (level >= 10)
+    private int defaultMaxClonesForLevel(int level) {
+        int lvl = Math.max(1, level);
+        if (lvl >= 10)
             return Integer.MAX_VALUE;
-
-        if (level == 9)
+        if (lvl == 9)
             return 18;
-
-        return 3 + ((level - 1) * 2);
+        return 3 + ((lvl - 1) * 2);
     }
 
     public CloneMode getMode(UUID ownerId) {
@@ -312,6 +354,8 @@ public class CloneKitManager implements Listener {
         if (kit != KitManager.Kit.CLONER) {
             removeOwnerClones(ownerId);
             ownerModes.remove(ownerId);
+            ownerUpkeepAccumulator.remove(ownerId);
+            ownerUpkeepWarnUntil.remove(ownerId);
             return;
         }
 
@@ -337,6 +381,12 @@ public class CloneKitManager implements Listener {
             }
 
             List<Mob> clones = getActiveClones(ownerId);
+            if (clones.isEmpty()) {
+                ownerToClones.remove(ownerId);
+                continue;
+            }
+
+            tickOwnerUpkeep(owner, ownerId, clones);
             if (clones.isEmpty()) {
                 ownerToClones.remove(ownerId);
                 continue;
@@ -416,8 +466,11 @@ public class CloneKitManager implements Listener {
 
     private void removeOwnerClones(UUID ownerId) {
         Set<UUID> ids = ownerToClones.remove(ownerId);
-        if (ids == null)
+        if (ids == null) {
+            ownerUpkeepAccumulator.remove(ownerId);
+            ownerUpkeepWarnUntil.remove(ownerId);
             return;
+        }
 
         for (UUID id : ids) {
             Entity entity = Bukkit.getEntity(id);
@@ -426,6 +479,9 @@ public class CloneKitManager implements Listener {
             }
             clearCloneRuntime(id);
         }
+
+        ownerUpkeepAccumulator.remove(ownerId);
+        ownerUpkeepWarnUntil.remove(ownerId);
     }
 
     private void clearCloneRuntime(UUID cloneId) {
@@ -455,12 +511,12 @@ public class CloneKitManager implements Listener {
                 piglin.getPersistentDataContainer().set(cloneOwnerKey, PersistentDataType.STRING,
                         owner.getUniqueId().toString());
 
-                piglin.setCustomName("§bКлон-свинозомби §7" + owner.getName());
+                piglin.customName(LEGACY.deserialize("§bКлон-свинозомби §7" + owner.getName()));
                 piglin.setCustomNameVisible(true);
                 piglin.setCanPickupItems(false);
                 piglin.setRemoveWhenFarAway(false);
                 piglin.setPersistent(true);
-                piglin.setBaby(false);
+                piglin.setAdult();
 
                 piglin.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 20 * 60 * 60, 0, true,
                         false,
@@ -554,6 +610,14 @@ public class CloneKitManager implements Listener {
         if (!clone.getWorld().getUID().equals(owner.getWorld().getUID())) {
             Location sync = findSpawnNear(owner.getLocation());
             clone.teleport(sync != null ? sync : owner.getLocation());
+        }
+
+        if (mode == CloneMode.SELF_DEFENSE) {
+            double leashSq = leashOwnerDistance * leashOwnerDistance;
+            if (clone.getLocation().distanceSquared(owner.getLocation()) > leashSq) {
+                Location sync = findSpawnNear(owner.getLocation());
+                clone.teleport(sync != null ? sync : owner.getLocation());
+            }
         }
 
         clone.setFireTicks(0);
@@ -772,10 +836,32 @@ public class CloneKitManager implements Listener {
 
         Vector push = dir.normalize().multiply(speed);
         Vector vel = clone.getVelocity();
+
+        Vector currentFlat = new Vector(vel.getX(), 0.0, vel.getZ());
+        double carry = currentFlat.dot(push) < 0.0 ? 0.10 : 0.30;
+
+        double y = vel.getY();
+        if (clone.isOnGround() && shouldStepUp(clone, push)) {
+            y = Math.max(y, 0.42);
+        }
+
         clone.setVelocity(new Vector(
-                vel.getX() * 0.35 + push.getX(),
-                Math.max(-0.08, Math.min(0.25, vel.getY())),
-                vel.getZ() * 0.35 + push.getZ()));
+                currentFlat.getX() * carry + push.getX(),
+                Math.max(-0.60, Math.min(0.80, y)),
+                currentFlat.getZ() * carry + push.getZ()));
+    }
+
+    private boolean shouldStepUp(Mob clone, Vector push) {
+        if (push.lengthSquared() < 0.0001)
+            return false;
+
+        Vector forward = push.clone().normalize().multiply(0.55);
+        Location feet = clone.getLocation().clone().add(0.0, 0.10, 0.0);
+
+        var atFeet = feet.clone().add(forward).getBlock();
+        var atHead = feet.clone().add(forward).add(0.0, 1.0, 0.0).getBlock();
+
+        return atFeet.getType().isSolid() && !atHead.getType().isSolid();
     }
 
     private void tickCloneMana(Mob clone, UUID ownerId) {
@@ -784,6 +870,81 @@ public class CloneKitManager implements Listener {
         double current = cloneMana.getOrDefault(cloneId, max);
         current = Math.min(max, current + (manaRegenPerSecond * 0.5));
         cloneMana.put(cloneId, current);
+    }
+
+    private void tickOwnerUpkeep(Player owner, UUID ownerId, List<Mob> clones) {
+        if (!upkeepEnabled || upkeepManaPerExtraClonePerSecond <= 0.0)
+            return;
+        if (plugin.mana() == null)
+            return;
+
+        int extra = Math.max(0, clones.size() - upkeepFreeClones);
+        if (extra <= 0) {
+            ownerUpkeepAccumulator.put(ownerId, 0.0);
+            return;
+        }
+
+        double acc = ownerUpkeepAccumulator.getOrDefault(ownerId, 0.0);
+        acc += upkeepManaPerExtraClonePerSecond * extra * 0.5;
+        int toSpend = (int) Math.floor(acc);
+
+        if (toSpend <= 0) {
+            ownerUpkeepAccumulator.put(ownerId, acc);
+            return;
+        }
+
+        if (plugin.mana().consumeXp(owner, toSpend)) {
+            ownerUpkeepAccumulator.put(ownerId, Math.max(0.0, acc - toSpend));
+            return;
+        }
+
+        ownerUpkeepAccumulator.put(ownerId, Math.min(1.0, acc));
+        removeOneExtraClone(ownerId, owner, clones);
+        maybeSendUpkeepWarning(owner, ownerId);
+    }
+
+    private void removeOneExtraClone(UUID ownerId, Player owner, List<Mob> clones) {
+        if (clones.isEmpty())
+            return;
+
+        Mob victim = null;
+        double bestDist = -1.0;
+        Location ownerLoc = owner.getLocation();
+
+        for (Mob clone : clones) {
+            double dist = clone.getLocation().distanceSquared(ownerLoc);
+            if (dist > bestDist) {
+                bestDist = dist;
+                victim = clone;
+            }
+        }
+
+        if (victim == null)
+            return;
+
+        UUID cloneId = victim.getUniqueId();
+        victim.remove();
+        clearCloneRuntime(cloneId);
+
+        Set<UUID> ids = ownerToClones.get(ownerId);
+        if (ids != null) {
+            ids.remove(cloneId);
+            if (ids.isEmpty()) {
+                ownerToClones.remove(ownerId);
+            }
+        }
+
+        clones.remove(victim);
+    }
+
+    private void maybeSendUpkeepWarning(Player owner, UUID ownerId) {
+        long now = System.currentTimeMillis();
+        long until = ownerUpkeepWarnUntil.getOrDefault(ownerId, 0L);
+        if (now < until)
+            return;
+
+        ownerUpkeepWarnUntil.put(ownerId, now + upkeepWarnCooldownMs);
+        owner.sendMessage("§d[Клоны] §7Недостаточно маны для содержания лишних клонов.");
     }
 
     private void tickCloneSelfHeal(Mob clone, UUID ownerId) {

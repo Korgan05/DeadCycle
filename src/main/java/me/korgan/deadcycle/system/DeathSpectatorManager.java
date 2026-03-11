@@ -6,6 +6,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Zombie;
@@ -29,6 +30,7 @@ public class DeathSpectatorManager implements Listener {
     private final DeadCyclePlugin plugin;
     private final Set<UUID> waitingForDayRespawn = ConcurrentHashMap.newKeySet();
     private BukkitTask clearZombieTargetsTask;
+    private BukkitTask checkAllDeadTask;
     private boolean isFullGameReset = false;
 
     public DeathSpectatorManager(DeadCyclePlugin plugin) {
@@ -81,7 +83,8 @@ public class DeathSpectatorManager implements Listener {
                 try {
                     p.sendMessage("§cТы умер. §7До конца ночи ты будешь в режиме наблюдателя.");
                     p.sendMessage("§aТы возродишься, когда наступит день.");
-                } catch (Throwable ignored) {
+                } catch (Throwable t) {
+                    logSuppressed("send death spectator message", t);
                 }
             }, 1L);
 
@@ -94,11 +97,22 @@ public class DeathSpectatorManager implements Listener {
         }
 
         // Проверяем, умерли ли все игроки (в любое время - день или ночь)
-        Bukkit.getScheduler().runTaskLater(plugin, this::checkIfAllPlayersDead, 3L);
+        scheduleCheckIfAllPlayersDead();
+    }
+
+    private void scheduleCheckIfAllPlayersDead() {
+        if (checkAllDeadTask != null)
+            return;
+        checkAllDeadTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            checkAllDeadTask = null;
+            checkIfAllPlayersDead();
+        }, 3L);
     }
 
     private void checkIfAllPlayersDead() {
         if (plugin.phase() == null)
+            return;
+        if (plugin.phase().isResetInProgress())
             return;
 
         // Считаем живых игроков (не spectator и не dead)
@@ -115,6 +129,10 @@ public class DeathSpectatorManager implements Listener {
         // Если на сервере есть игроки, но все мертвы/spectator - сброс игры
         if (aliveCount == 0 && !Bukkit.getOnlinePlayers().isEmpty()) {
             Bukkit.getScheduler().runTask(plugin, () -> {
+                if (plugin.phase() == null)
+                    return;
+                if (plugin.phase().isResetInProgress())
+                    return;
                 plugin.phase().reset();
             });
         }
@@ -139,7 +157,8 @@ public class DeathSpectatorManager implements Listener {
         try {
             if (e.getEntity() instanceof Mob m)
                 m.setTarget(null);
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            logSuppressed("clear zombie target (living)", t);
         }
     }
 
@@ -160,7 +179,8 @@ public class DeathSpectatorManager implements Listener {
         try {
             if (e.getEntity() instanceof Mob m)
                 m.setTarget(null);
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            logSuppressed("clear zombie target (generic)", t);
         }
     }
 
@@ -184,7 +204,8 @@ public class DeathSpectatorManager implements Listener {
                 return;
             try {
                 p.setGameMode(GameMode.SPECTATOR);
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                logSuppressed("set spectator on respawn", t);
             }
         });
     }
@@ -210,7 +231,8 @@ public class DeathSpectatorManager implements Listener {
                 return;
             try {
                 p.setGameMode(GameMode.SPECTATOR);
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                logSuppressed("set spectator on join", t);
             }
         });
     }
@@ -230,20 +252,27 @@ public class DeathSpectatorManager implements Listener {
 
         try {
             p.setGameMode(GameMode.SURVIVAL);
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            logSuppressed("set survival on revive", t);
         }
 
         try {
             p.sendMessage("§aНаступил день. Ты возродился!");
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            logSuppressed("send revive message", t);
         }
 
         try {
             p.setFireTicks(0);
             p.setFoodLevel(20);
             p.setSaturation(5.0f);
-            p.setHealth(Math.max(1.0, p.getMaxHealth()));
-        } catch (Throwable ignored) {
+            double maxHealth = 20.0;
+            if (p.getAttribute(Attribute.MAX_HEALTH) != null) {
+                maxHealth = p.getAttribute(Attribute.MAX_HEALTH).getValue();
+            }
+            p.setHealth(Math.max(1.0, maxHealth));
+        } catch (Throwable t) {
+            logSuppressed("restore player vitals", t);
         }
 
         Location spawn = getSafeSpawn();
@@ -252,7 +281,8 @@ public class DeathSpectatorManager implements Listener {
                 if (p.isOnline()) {
                     try {
                         p.teleport(spawn);
-                    } catch (Throwable ignored) {
+                    } catch (Throwable t) {
+                        logSuppressed("teleport revived player", t);
                     }
                 }
             });
@@ -311,7 +341,8 @@ public class DeathSpectatorManager implements Listener {
                         if (z.getTarget() != null && z.getTarget().getUniqueId().equals(p.getUniqueId())) {
                             z.setTarget(null);
                         }
-                    } catch (Throwable ignored) {
+                    } catch (Throwable t) {
+                        logSuppressed("periodic zombie target clear", t);
                     }
                 }
             }
@@ -340,7 +371,8 @@ public class DeathSpectatorManager implements Listener {
                     return spawn;
                 }
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            logSuppressed("resolve safe spawn", t);
         }
 
         World w = Bukkit.getWorlds().isEmpty() ? null : Bukkit.getWorlds().get(0);
@@ -357,13 +389,22 @@ public class DeathSpectatorManager implements Listener {
             Object spigot = p.spigot();
             spigot.getClass().getMethod("respawn").invoke(spigot);
             return;
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            logSuppressed("force respawn via spigot", t);
         }
 
         // Paper может иметь прямой Player#respawn().
         try {
             p.getClass().getMethod("respawn").invoke(p);
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            logSuppressed("force respawn via direct method", t);
         }
+    }
+
+    private void logSuppressed(String context, Throwable t) {
+        if (t == null)
+            return;
+        plugin.getLogger().fine("[DeathSpectator] " + context + ": "
+                + t.getClass().getSimpleName() + " - " + t.getMessage());
     }
 }

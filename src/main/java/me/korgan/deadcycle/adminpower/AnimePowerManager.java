@@ -1,8 +1,9 @@
 package me.korgan.deadcycle.adminpower;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -48,6 +49,8 @@ import java.util.Set;
 import java.util.UUID;
 
 public class AnimePowerManager implements Listener {
+
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
 
     public enum AnimeClass {
         GOJO("gojo", "§b§lГоджо Сатору"),
@@ -1140,7 +1143,7 @@ public class AnimePowerManager implements Listener {
         ItemStack item = new ItemStack(def.material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(def.displayName);
+            meta.displayName(LEGACY.deserialize(def.displayName));
 
             List<String> lore = new ArrayList<>(def.lore);
             int mana = getManaCost(def, level);
@@ -1150,7 +1153,11 @@ public class AnimePowerManager implements Listener {
             lore.add("§7КД: §e" + cdSec + "с");
             lore.add("§7Уровень силы: §d" + level);
 
-            meta.setLore(lore);
+            List<Component> loreComponents = new ArrayList<>(lore.size());
+            for (String line : lore) {
+                loreComponents.add(LEGACY.deserialize(line));
+            }
+            meta.lore(loreComponents);
             meta.setEnchantmentGlintOverride(true);
             meta.getPersistentDataContainer().set(animePowerKey, PersistentDataType.STRING, def.id);
             item.setItemMeta(meta);
@@ -1178,7 +1185,6 @@ public class AnimePowerManager implements Listener {
 
     private Location resolveTargetPoint(Player player, int maxDistance, double fallbackAhead) {
         Location eye = player.getEyeLocation();
-        World world = player.getWorld();
 
         try {
             org.bukkit.block.Block block = player.getTargetBlockExact(maxDistance);

@@ -2,7 +2,13 @@ package me.korgan.deadcycle.base;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
 import me.korgan.deadcycle.kit.KitManager;
-import org.bukkit.*;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Sound;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -10,6 +16,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitTask;
@@ -19,6 +26,21 @@ import java.util.*;
 public class WallUpgradeGUI implements Listener {
 
     private final DeadCyclePlugin plugin;
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+    private static final Component TITLE = LEGACY.deserialize("§3Прокачка стен");
+
+    private static final class WallUpgradeGuiHolder implements InventoryHolder {
+        private Inventory inventory;
+
+        @Override
+        public Inventory getInventory() {
+            return inventory;
+        }
+
+        private void setInventory(Inventory inventory) {
+            this.inventory = inventory;
+        }
+    }
 
     private final Map<UUID, BukkitTask> tasks = new HashMap<>();
     private final Map<UUID, Integer> sessionTotal = new HashMap<>();
@@ -32,20 +54,26 @@ public class WallUpgradeGUI implements Listener {
     }
 
     public void open(Player p) {
-        Inventory inv = Bukkit.createInventory(null, 27, ChatColor.DARK_AQUA + "Прокачка стен");
+        WallUpgradeGuiHolder holder = new WallUpgradeGuiHolder();
+        Inventory inv = Bukkit.createInventory(holder, 27, TITLE);
+        holder.setInventory(inv);
         build(inv, p);
         p.openInventory(inv);
+    }
+
+    private boolean isWallUpgradeInventory(Inventory inventory) {
+        return inventory != null && inventory.getHolder() instanceof WallUpgradeGuiHolder;
     }
 
     private void build(Inventory inv, Player p) {
         inv.clear();
 
-        inv.setItem(11, item(Material.SMITHING_TABLE, ChatColor.AQUA + "Начать прокачку",
-                ChatColor.GRAY + "Прокачивает стены по 1 блоку.",
-                ChatColor.GRAY + "Тратит очки базы.",
-                ChatColor.DARK_GRAY + "Только для билдера"));
+        inv.setItem(11, item(Material.SMITHING_TABLE, "§bНачать прокачку",
+                "§7Прокачивает стены по 1 блоку.",
+                "§7Тратит очки базы.",
+                "§8Только для билдера"));
 
-        inv.setItem(15, item(Material.BARRIER, ChatColor.RED + "Закрыть"));
+        inv.setItem(15, item(Material.BARRIER, "§cЗакрыть"));
         inv.setItem(13, makeInfo(p));
     }
 
@@ -63,32 +91,36 @@ public class WallUpgradeGUI implements Listener {
         if (total > 0)
             percent = Math.min(100.0, (done * 100.0) / total);
 
-        String nextInfo = ChatColor.GRAY + "След. уровень: " + ChatColor.RED + "недоступно";
+        String nextInfo = "§7След. уровень: §cнедоступно";
         if (current < maxLevel) {
             Material to = getWallMaterialForLevel(current + 1);
-            nextInfo = ChatColor.GRAY + "След. уровень: " + ChatColor.AQUA + (current + 1)
-                    + ChatColor.GRAY + " (" + ChatColor.WHITE + prettyMat(to) + ChatColor.GRAY + ")";
+            nextInfo = "§7След. уровень: §b" + (current + 1)
+                    + "§7 (§f" + prettyMat(to) + "§7)";
         }
 
         return item(Material.PAPER,
-                ChatColor.YELLOW + "Статус прокачки",
-                ChatColor.GRAY + "Текущий уровень стен: " + ChatColor.GREEN + current,
+                "§eСтатус прокачки",
+                "§7Текущий уровень стен: §a" + current,
                 nextInfo,
                 "",
-                ChatColor.GRAY + "Прогресс сессии: " + ChatColor.AQUA + String.format(Locale.US, "%.1f%%", percent),
-                ChatColor.GRAY + "Прокачено: " + ChatColor.WHITE + done + ChatColor.GRAY + " / " + ChatColor.WHITE
-                        + total,
-                ChatColor.GRAY + "Очки базы: " + ChatColor.WHITE + plugin.baseResources().getPoints(),
-                ChatColor.GRAY + "Режим: " + (running ? (ChatColor.GREEN + "идёт") : (ChatColor.RED + "остановлен")));
+                "§7Прогресс сессии: §b" + String.format(Locale.US, "%.1f%%", percent),
+                "§7Прокачено: §f" + done + "§7 / §f" + total,
+                "§7Очки базы: §f" + plugin.baseResources().getPoints(),
+                "§7Режим: " + (running ? "§aидёт" : "§cостановлен"));
     }
 
     private ItemStack item(Material mat, String name, String... lore) {
         ItemStack it = new ItemStack(mat);
         ItemMeta im = it.getItemMeta();
         if (im != null) {
-            im.setDisplayName(name);
-            if (lore != null && lore.length > 0)
-                im.setLore(Arrays.asList(lore));
+            im.displayName(LEGACY.deserialize(name));
+            if (lore != null && lore.length > 0) {
+                List<Component> loreComponents = new ArrayList<>(lore.length);
+                for (String line : lore) {
+                    loreComponents.add(LEGACY.deserialize(line));
+                }
+                im.lore(loreComponents);
+            }
             it.setItemMeta(im);
         }
         return it;
@@ -132,10 +164,11 @@ public class WallUpgradeGUI implements Listener {
     public void onClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player p))
             return;
-        String title = e.getView().getTitle();
-        if (title == null)
+
+        Inventory top = e.getView().getTopInventory();
+        if (!isWallUpgradeInventory(top))
             return;
-        if (!ChatColor.stripColor(title).equalsIgnoreCase("Прокачка стен"))
+        if (e.getRawSlot() < 0 || e.getRawSlot() >= top.getSize())
             return;
 
         e.setCancelled(true);
@@ -151,7 +184,7 @@ public class WallUpgradeGUI implements Listener {
 
         if (slot == 11) {
             toggle(p);
-            build(e.getInventory(), p);
+            build(top, p);
         }
     }
 
@@ -159,17 +192,17 @@ public class WallUpgradeGUI implements Listener {
         UUID id = p.getUniqueId();
 
         if (plugin.kit().getKit(id) != KitManager.Kit.BUILDER) {
-            p.sendMessage(ChatColor.RED + "Это меню только для билдера.");
+            p.sendMessage("§cЭто меню только для билдера.");
             return;
         }
 
         if (tasks.containsKey(id)) {
-            stop(p, ChatColor.YELLOW + "Прокачка стен остановлена.");
+            stop(p, "§eПрокачка стен остановлена.");
             return;
         }
 
         if (!plugin.base().isEnabled() || !plugin.base().isOnBase(p.getLocation())) {
-            p.sendMessage(ChatColor.RED + "Ты должен быть на базе, чтобы прокачивать стены.");
+            p.sendMessage("§cТы должен быть на базе, чтобы прокачивать стены.");
             return;
         }
 
@@ -179,9 +212,8 @@ public class WallUpgradeGUI implements Listener {
             int broken = plugin.blocks().getBrokenCountOnBase(plugin.base().getCenter(), plugin.base().getRadius());
             int damaged = plugin.blocks().getDamagedCountOnBase(plugin.base().getCenter(), plugin.base().getRadius());
             if (broken > 0 || damaged > 0) {
-                p.sendMessage(ChatColor.RED + "Нельзя прокачивать стены, пока база повреждена.");
-                p.sendMessage(ChatColor.GRAY + "Сломано: " + ChatColor.WHITE + broken + ChatColor.GRAY
-                        + ", повреждено: " + ChatColor.WHITE + damaged);
+                p.sendMessage("§cНельзя прокачивать стены, пока база повреждена.");
+                p.sendMessage("§7Сломано: §f" + broken + "§7, повреждено: §f" + damaged);
                 return;
             }
         }
@@ -189,7 +221,7 @@ public class WallUpgradeGUI implements Listener {
         int current = plugin.getConfig().getInt("base.wall_level", 1);
         int maxLevel = plugin.getConfig().getInt("wall_upgrade.max_level", 3);
         if (current >= maxLevel) {
-            p.sendMessage(ChatColor.GREEN + "Стены уже максимального уровня.");
+            p.sendMessage("§aСтены уже максимального уровня.");
             return;
         }
 
@@ -199,7 +231,7 @@ public class WallUpgradeGUI implements Listener {
 
         List<Location> list = scanTargets(from);
         if (list.isEmpty()) {
-            p.sendMessage(ChatColor.RED + "Не найдено блоков для прокачки (ожидались " + from + ").");
+            p.sendMessage("§cНе найдено блоков для прокачки (ожидались " + from + ").");
             return;
         }
 
@@ -216,7 +248,7 @@ public class WallUpgradeGUI implements Listener {
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> tick(p, from, to), 0L, tickPeriod);
         tasks.put(id, task);
 
-        p.sendMessage(ChatColor.AQUA + "Прокачка стен началась (уровень " + toLevel + ").");
+        p.sendMessage("§bПрокачка стен началась (уровень " + toLevel + ").");
         p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 0.25f, 1.2f);
     }
 
@@ -265,7 +297,7 @@ public class WallUpgradeGUI implements Listener {
         }
 
         if (!plugin.base().isEnabled() || !plugin.base().isOnBase(p.getLocation())) {
-            stop(p, ChatColor.RED + "Ты вышел с базы — прокачка остановлена.");
+            stop(p, "§cТы вышел с базы — прокачка остановлена.");
             return;
         }
 
@@ -274,7 +306,7 @@ public class WallUpgradeGUI implements Listener {
             int broken = plugin.blocks().getBrokenCountOnBase(plugin.base().getCenter(), plugin.base().getRadius());
             int damaged = plugin.blocks().getDamagedCountOnBase(plugin.base().getCenter(), plugin.base().getRadius());
             if (broken > 0 || damaged > 0) {
-                stop(p, ChatColor.RED
+                stop(p, "§c"
                         + "Прокачка остановлена: сначала почини базу (есть повреждённые/сломанные блоки).");
                 return;
             }
@@ -282,7 +314,7 @@ public class WallUpgradeGUI implements Listener {
 
         List<Location> list = targets.get(id);
         if (list == null || list.isEmpty()) {
-            stop(p, ChatColor.RED + "Прокачка остановлена (список блоков пуст).");
+            stop(p, "§cПрокачка остановлена (список блоков пуст).");
             return;
         }
 
@@ -304,7 +336,7 @@ public class WallUpgradeGUI implements Listener {
 
         for (int i = 0; i < blocksThisTick && idx < list.size(); i++) {
             if (plugin.baseResources().getPoints() < pointsPerBlock) {
-                stop(p, ChatColor.RED + "Недостаточно очков базы для прокачки стен.");
+                stop(p, "§cНедостаточно очков базы для прокачки стен.");
                 return;
             }
 
@@ -342,17 +374,13 @@ public class WallUpgradeGUI implements Listener {
         int done = sessionDone.getOrDefault(id, 0);
         double percent = Math.min(100.0, (done * 100.0) / Math.max(1, total));
 
-        p.sendActionBar(
-                ChatColor.AQUA + "Прокачка стен: " + ChatColor.WHITE + String.format(Locale.US, "%.1f%%", percent)
-                        + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Очки базы: " + ChatColor.WHITE
-                        + plugin.baseResources().getPoints());
+        String actionBar = "§bПрокачка стен: §f" + String.format(Locale.US, "%.1f%%", percent)
+                + "§7 | §eОчки базы: §f" + plugin.baseResources().getPoints();
+        p.sendActionBar(LEGACY.deserialize(actionBar));
 
-        if (p.getOpenInventory() != null && p.getOpenInventory().getTitle() != null) {
-            String t = ChatColor.stripColor(p.getOpenInventory().getTitle());
-            if ("Прокачка стен".equalsIgnoreCase(t)) {
-                Inventory inv = p.getOpenInventory().getTopInventory();
-                inv.setItem(13, makeInfo(p));
-            }
+        Inventory top = p.getOpenInventory() != null ? p.getOpenInventory().getTopInventory() : null;
+        if (isWallUpgradeInventory(top)) {
+            top.setItem(13, makeInfo(p));
         }
     }
 
@@ -365,7 +393,7 @@ public class WallUpgradeGUI implements Listener {
         plugin.getConfig().set("base.wall_level", toLevel);
         plugin.saveConfig();
 
-        p.sendMessage(ChatColor.GREEN + "Прокачка стен завершена! Новый уровень: " + toLevel);
+        p.sendMessage("§aПрокачка стен завершена! Новый уровень: " + toLevel);
         p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.7f, 1.2f);
 
         targets.remove(id);
@@ -382,12 +410,9 @@ public class WallUpgradeGUI implements Listener {
             t.cancel();
         p.sendMessage(msg);
 
-        if (p.getOpenInventory() != null && p.getOpenInventory().getTitle() != null) {
-            String title = ChatColor.stripColor(p.getOpenInventory().getTitle());
-            if ("Прокачка стен".equalsIgnoreCase(title)) {
-                Inventory inv = p.getOpenInventory().getTopInventory();
-                inv.setItem(13, makeInfo(p));
-            }
+        Inventory top = p.getOpenInventory() != null ? p.getOpenInventory().getTopInventory() : null;
+        if (isWallUpgradeInventory(top)) {
+            top.setItem(13, makeInfo(p));
         }
     }
 

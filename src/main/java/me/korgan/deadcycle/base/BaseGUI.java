@@ -3,37 +3,55 @@ package me.korgan.deadcycle.base;
 import me.korgan.deadcycle.DeadCyclePlugin;
 import me.korgan.deadcycle.kit.KitManager;
 import me.korgan.deadcycle.phase.PhaseManager;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Locale;
 
 public class BaseGUI implements Listener {
 
     private final DeadCyclePlugin plugin;
-    private final String title = ChatColor.DARK_GREEN + "DeadCycle • База";
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+    private static final Component TITLE = LEGACY.deserialize("§2DeadCycle • База");
+
+    private static final class BaseGuiHolder implements InventoryHolder {
+        private Inventory inventory;
+
+        @Override
+        public Inventory getInventory() {
+            return inventory;
+        }
+
+        private void setInventory(Inventory inventory) {
+            this.inventory = inventory;
+        }
+    }
 
     // слоты кнопок
     private static final int SLOT_INFO = 11;
     private static final int SLOT_REPAIR = 13;
     private static final int SLOT_SHOP = 15;
-    private static final int SLOT_UPGRADES = 22; // пока заглушка
+    private static final int SLOT_UPGRADES = 22;
 
     public BaseGUI(DeadCyclePlugin plugin) {
         this.plugin = plugin;
     }
 
     public void open(Player p) {
-        Inventory inv = Bukkit.createInventory(null, 27, title);
+        BaseGuiHolder holder = new BaseGuiHolder();
+        Inventory inv = Bukkit.createInventory(holder, 27, TITLE);
+        holder.setInventory(inv);
 
         // рамка
         for (int i = 0; i < inv.getSize(); i++)
@@ -44,23 +62,27 @@ public class BaseGUI implements Listener {
 
         // ремонт (builder only)
         inv.setItem(SLOT_REPAIR, button(Material.ANVIL,
-                ChatColor.AQUA + "Ремонт базы",
-                ChatColor.GRAY + "Открыть меню ремонта",
-                ChatColor.GRAY + "Только для билдера"));
+                "§bРемонт базы",
+                "§7Открыть меню ремонта",
+                "§7Только для билдера"));
 
         // магазин
         inv.setItem(SLOT_SHOP, button(Material.EMERALD,
-                ChatColor.GOLD + "Магазин",
-                ChatColor.GRAY + "Открыть магазин (/shop)",
-                ChatColor.GRAY + "Только на базе"));
+                "§6Магазин",
+                "§7Открыть магазин (/shop)",
+                "§7Только на базе"));
 
-        // апгрейды (пока заглушка в пакете 2 сделаем полностью)
+        // апгрейды
         inv.setItem(SLOT_UPGRADES, button(Material.NETHER_STAR,
-                ChatColor.LIGHT_PURPLE + "Апгрейды базы",
-                ChatColor.GRAY + "Будет в пакете v0.6-2",
-                ChatColor.GRAY + "Скорость ремонта / HP стен"));
+                "§dПрокачка стен",
+                "§7Открыть меню улучшения стен",
+                "§7Только для билдера"));
 
         p.openInventory(inv);
+    }
+
+    private boolean isBaseInventory(Inventory inventory) {
+        return inventory != null && inventory.getHolder() instanceof BaseGuiHolder;
     }
 
     private ItemStack infoItem(Player p) {
@@ -84,30 +106,30 @@ public class BaseGUI implements Listener {
 
         int wallLevel = plugin.getConfig().getInt("base.wall_level", 1);
         int maxWallLevel = plugin.getConfig().getInt("wall_upgrade.max_level", 3);
-        String wallNext = ChatColor.RED + "недоступно";
+        String wallNext = "§cнедоступно";
         if (wallLevel < maxWallLevel) {
             Material nextMat = getWallMaterialForLevel(wallLevel + 1);
-            wallNext = ChatColor.AQUA + String.valueOf(wallLevel + 1)
-                    + ChatColor.GRAY + " (" + ChatColor.WHITE + prettyMat(nextMat) + ChatColor.GRAY + ")";
+            wallNext = "§b" + String.valueOf(wallLevel + 1)
+                    + "§7 (§f" + prettyMat(nextMat) + "§7)";
         }
 
         return button(Material.BOOK,
-                ChatColor.GREEN + "Статус базы",
-                ChatColor.YELLOW + "На базе: " + ChatColor.WHITE + onBase,
-                ChatColor.AQUA + "Фаза: " + ChatColor.WHITE + phase + ChatColor.GRAY + " | День: " + ChatColor.WHITE
+                "§aСтатус базы",
+                "§eНа базе: §f" + onBase,
+                "§bФаза: §f" + phase + "§7 | День: §f"
                         + day,
-                ChatColor.GOLD + "Твои деньги: " + ChatColor.WHITE + money,
-                ChatColor.BLUE + "Твой кит: " + ChatColor.WHITE + kitName,
+                "§6Твои деньги: §f" + money,
+                "§9Твой кит: §f" + kitName,
                 " ",
-                ChatColor.GREEN + "Стены: " + ChatColor.WHITE + wallLevel + ChatColor.GRAY + " / " + ChatColor.WHITE
+                "§aСтены: §f" + wallLevel + "§7 / §f"
                         + maxWallLevel,
-                ChatColor.GRAY + "След. уровень: " + wallNext,
+                "§7След. уровень: " + wallNext,
                 " ",
-                ChatColor.AQUA + "Очки базы: " + ChatColor.WHITE + total,
-                ChatColor.GRAY + "Камень: " + stone,
-                ChatColor.GRAY + "Уголь: " + coal,
-                ChatColor.GRAY + "Железо: " + iron,
-                ChatColor.GRAY + "Алмазы: " + dia);
+                "§bОчки базы: §f" + total,
+                "§7Камень: " + stone,
+                "§7Уголь: " + coal,
+                "§7Железо: " + iron,
+                "§7Алмазы: " + dia);
     }
 
     private Material getWallMaterialForLevel(int level) {
@@ -133,7 +155,10 @@ public class BaseGUI implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent e) {
-        if (!title.equals(e.getView().getTitle()))
+        Inventory top = e.getView().getTopInventory();
+        if (!isBaseInventory(top))
+            return;
+        if (e.getRawSlot() < 0 || e.getRawSlot() >= top.getSize())
             return;
         e.setCancelled(true);
 
@@ -143,7 +168,7 @@ public class BaseGUI implements Listener {
         // безопасность: /base только на базе
         if (!plugin.base().isEnabled() || !plugin.base().isOnBase(p.getLocation())) {
             p.closeInventory();
-            p.sendMessage(ChatColor.RED + "Меню базы доступно только внутри базы!");
+            p.sendMessage("§cМеню базы доступно только внутри базы!");
             return;
         }
 
@@ -153,7 +178,7 @@ public class BaseGUI implements Listener {
             // builder only
             KitManager.Kit kit = plugin.kit().getKit(p.getUniqueId());
             if (kit != KitManager.Kit.BUILDER) {
-                p.sendMessage(ChatColor.RED + "Ремонт доступен только киту BUILDER.");
+                p.sendMessage("§cРемонт доступен только киту BUILDER.");
                 return;
             }
             plugin.repairGui().open(p);
@@ -167,7 +192,7 @@ public class BaseGUI implements Listener {
         }
 
         if (slot == SLOT_UPGRADES) {
-            p.sendMessage(ChatColor.LIGHT_PURPLE + "Апгрейды будут в пакете v0.6-2.");
+            plugin.wallUpgradeGui().open(p);
         }
 
         if (slot == SLOT_INFO) {
@@ -180,7 +205,7 @@ public class BaseGUI implements Listener {
         ItemStack it = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(" ");
+            meta.displayName(Component.text(" "));
             it.setItemMeta(meta);
         }
         return it;
@@ -190,8 +215,12 @@ public class BaseGUI implements Listener {
         ItemStack it = new ItemStack(mat);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(name);
-            meta.setLore(Arrays.asList(lore));
+            meta.displayName(LEGACY.deserialize(name));
+            ArrayList<Component> loreComponents = new ArrayList<>(lore.length);
+            for (String line : lore) {
+                loreComponents.add(LEGACY.deserialize(line));
+            }
+            meta.lore(loreComponents);
             it.setItemMeta(meta);
         }
         return it;

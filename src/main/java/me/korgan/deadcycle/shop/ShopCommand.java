@@ -1,7 +1,6 @@
 package me.korgan.deadcycle.shop;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
-import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -27,12 +26,12 @@ public class ShopCommand implements CommandExecutor {
         }
 
         if (!plugin.base().isEnabled()) {
-            p.sendMessage(ChatColor.RED + "База не включена. (base.enabled=false)");
+            p.sendMessage("§cБаза не включена. (base.enabled=false)");
             return true;
         }
 
         if (!plugin.base().isOnBase(p.getLocation())) {
-            p.sendMessage(ChatColor.RED + "Магазин доступен только на базе!");
+            p.sendMessage("§cМагазин доступен только на базе!");
             return true;
         }
 

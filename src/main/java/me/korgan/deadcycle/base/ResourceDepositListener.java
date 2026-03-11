@@ -1,7 +1,6 @@
 package me.korgan.deadcycle.base;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
-import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -87,20 +86,19 @@ public class ResourceDepositListener implements Listener {
         plugin.econ().give(p, money);
 
         // сообщения
-        p.sendMessage(
-                ChatColor.GREEN + "Ты сдал ресурсы на базу: " + ChatColor.WHITE + "+" + totalPoints + " очков базы");
-        p.sendMessage(ChatColor.YELLOW + "Награда: " + ChatColor.WHITE + "+" + money + "$");
+        p.sendMessage("§aТы сдал ресурсы на базу: §f+" + totalPoints + " очков базы");
+        p.sendMessage("§eНаграда: §f+" + money + "$");
 
         // детализация
         StringBuilder detail = new StringBuilder();
         if (stonePts > 0)
-            detail.append(ChatColor.GRAY).append("Камень +").append(stonePts).append("  ");
+            detail.append("§7").append("Камень +").append(stonePts).append("  ");
         if (coalPts > 0)
-            detail.append(ChatColor.GRAY).append("Уголь +").append(coalPts).append("  ");
+            detail.append("§7").append("Уголь +").append(coalPts).append("  ");
         if (ironPts > 0)
-            detail.append(ChatColor.GRAY).append("Железо +").append(ironPts).append("  ");
+            detail.append("§7").append("Железо +").append(ironPts).append("  ");
         if (diamondPts > 0)
-            detail.append(ChatColor.GRAY).append("Алмазы +").append(diamondPts).append("  ");
+            detail.append("§7").append("Алмазы +").append(diamondPts).append("  ");
         if (!detail.isEmpty())
             p.sendMessage(detail.toString());
     }

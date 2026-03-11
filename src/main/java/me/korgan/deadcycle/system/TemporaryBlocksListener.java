@@ -54,17 +54,28 @@ public class TemporaryBlocksListener implements Listener {
             try {
                 if (!now.getBlockData().getAsString().equals(data))
                     return;
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                logSuppressed("block data comparison", t);
+                return;
             }
 
             try {
                 now.setType(Material.AIR, false);
             } catch (Throwable t) {
+                logSuppressed("set AIR without physics", t);
                 try {
                     now.setType(Material.AIR);
-                } catch (Throwable ignored) {
+                } catch (Throwable t2) {
+                    logSuppressed("set AIR fallback", t2);
                 }
             }
         }, 20L * 10L);
+    }
+
+    private void logSuppressed(String context, Throwable t) {
+        if (t == null)
+            return;
+        plugin.getLogger().fine("[TemporaryBlocks] " + context + ": "
+                + t.getClass().getSimpleName() + " - " + t.getMessage());
     }
 }

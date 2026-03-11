@@ -81,7 +81,6 @@ public class SpecialSkillManager implements Listener {
         boolean hasRegenItem;
         boolean hasAutoRegenItem;
         boolean hasAutoDodgeItem;
-        boolean regenInMainHand;
     }
 
     private final Map<UUID, SkillItemCache> itemCache = new HashMap<>();
@@ -173,8 +172,6 @@ public class SpecialSkillManager implements Listener {
 
     private SkillItemCache scanSkillItems(Player p) {
         SkillItemCache cache = new SkillItemCache();
-        ItemStack mainHand = p.getInventory().getItemInMainHand();
-        cache.regenInMainHand = isRegenItem(mainHand);
 
         for (ItemStack it : p.getInventory().getContents()) {
             if (it == null)
@@ -853,7 +850,6 @@ public class SpecialSkillManager implements Listener {
         boolean regenInMainHand = isRegenItem(p.getInventory().getItemInMainHand());
         boolean regenInOffHand = isRegenItem(p.getInventory().getItemInOffHand());
 
-        cache.regenInMainHand = regenInMainHand;
         if (regenInMainHand || regenInOffHand) {
             cache.hasRegenItem = true;
         }

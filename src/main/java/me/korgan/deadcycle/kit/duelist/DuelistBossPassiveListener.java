@@ -1,6 +1,7 @@
-package me.korgan.deadcycle.kit;
+package me.korgan.deadcycle.kit.duelist;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.KitManager;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Monster;

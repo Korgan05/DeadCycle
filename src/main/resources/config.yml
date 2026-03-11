@@ -5,6 +5,12 @@ phase:
 economy:
   start_money: 0
   kill_zombie_reward: 5
+
+  # Ограничение фарма денег с обычных зомби (0 = без лимита)
+  kill_reward_cap:
+    window_seconds: 60
+    max_reward_in_window: 0
+
   # Опыт за съедание гнилой плоти (выпадает с зомби)
   rotten_flesh_xp: 5
 
@@ -146,9 +152,26 @@ mini_boss:
 cloner:
   enabled: true
 
-  # Лимит активных клонов (жестко по уровням в коде):
-  # 1 лвл = 3, 2 = 5, 3 = 7, 4 = 9, 5 = 11,
-  # 6 = 13, 7 = 15, 8 = 17, 9 = 18, 10 = безлимит.
+  # Лимиты активных клонов по уровням (l10: -1 = безлимит)
+  max_clones_by_level:
+    l1: 3
+    l2: 5
+    l3: 7
+    l4: 9
+    l5: 11
+    l6: 13
+    l7: 15
+    l8: 17
+    l9: 18
+    l10: -1
+
+  # Содержание лишних клонов за ману владельца
+  upkeep:
+    enabled: false
+    mana_per_extra_clone_per_second: 0.0
+    # -1 = бесплатно для любого количества
+    free_clones: -1
+    warn_cooldown_ms: 5000
 
   # Базовые статы клонов
   hp_base: 22.0
@@ -217,6 +240,14 @@ summoner:
     phantom: 4
     golem: 2
     vex: 6
+
+  # Содержание лишних призывов за ману владельца
+  upkeep:
+    enabled: false
+    mana_per_extra_summon_per_second: 0.0
+    # -1 = бесплатно для любого количества
+    free_summons: -1
+    warn_cooldown_ms: 5000
 
   # Пассивка 10 уровня: варден перед смертью
   death_warden:

@@ -2,6 +2,7 @@ package me.korgan.deadcycle.boss;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
 import me.korgan.deadcycle.kit.KitManager;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -33,6 +34,8 @@ import org.bukkit.util.Vector;
 import java.util.*;
 
 public class MiniBossManager implements Listener {
+
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
 
     private final DeadCyclePlugin plugin;
     private final Random rng = new Random();
@@ -182,12 +185,12 @@ public class MiniBossManager implements Listener {
                 z.getPersistentDataContainer().set(miniBossOwnerKey, PersistentDataType.STRING,
                         owner.getUniqueId().toString());
 
-                z.setCustomName("§8§l[МИНИ] §7Копия " + owner.getName());
+                z.customName(LEGACY.deserialize("§8§l[МИНИ] §7Копия " + owner.getName()));
                 z.setCustomNameVisible(true);
                 z.setCanPickupItems(false);
                 z.setRemoveWhenFarAway(false);
                 z.setPersistent(true);
-                z.setBaby(false);
+                z.setAdult();
 
                 EntityEquipment eq = z.getEquipment();
                 if (eq != null) {

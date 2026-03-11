@@ -1,6 +1,8 @@
-package me.korgan.deadcycle.kit;
+package me.korgan.deadcycle.kit.gravitator;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.Skill;
+import me.korgan.deadcycle.kit.SkillManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -219,6 +221,20 @@ public class GravityCrushSkill implements Skill {
                         if (applyDamage) {
                             z.damage(damagePerTick, p);
                         }
+                        Vector vel = z.getVelocity();
+                        double down = z.isOnGround() ? -0.20 : -0.95;
+                        z.setVelocity(new Vector(
+                                vel.getX() * 0.08,
+                                Math.min(vel.getY(), down),
+                                vel.getZ() * 0.08));
+                        z.setFallDistance(0.0f);
+                        z.addPotionEffect(new PotionEffect(
+                                PotionEffectType.SLOWNESS,
+                                40,
+                                Math.max(zombieSlowAmplifier, 6),
+                                true,
+                                false,
+                                true));
                         continue;
                     }
 
@@ -243,6 +259,13 @@ public class GravityCrushSkill implements Skill {
         }.runTaskTimer(plugin, 0L, CHANNEL_PERIOD_TICKS);
 
         activeChannels.put(uuid, task);
+    }
+
+    public boolean isChanneling(UUID uuid) {
+        if (uuid == null)
+            return false;
+        BukkitTask task = activeChannels.get(uuid);
+        return task != null && !task.isCancelled();
     }
 
     private boolean consumeCycleCost(Player p) {

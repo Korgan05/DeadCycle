@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import java.util.Locale;
 import java.util.UUID;
 
+@SuppressWarnings("deprecation")
 public class DcCommand implements CommandExecutor {
 
     private final DeadCyclePlugin plugin;
@@ -82,7 +83,9 @@ public class DcCommand implements CommandExecutor {
                     + ChatColor.GRAY + ", "
                     + ChatColor.YELLOW + "/dc setstat <ник> <ключ> <значение>"
                     + ChatColor.GRAY + ", "
-                    + ChatColor.YELLOW + "/dc anime <grant|clear|info|setlvl|giveitems> ...");
+                    + ChatColor.YELLOW + "/dc anime <grant|clear|info|setlvl|giveitems> ..."
+                    + ChatColor.GRAY + ", "
+                    + ChatColor.YELLOW + "/dc benchmark <start|stop|report|reset> [seconds]");
             return true;
         }
 
@@ -418,6 +421,10 @@ public class DcCommand implements CommandExecutor {
                 return handleAnime(sender, args);
             }
 
+            case "benchmark" -> {
+                return handleBenchmark(sender, args);
+            }
+
             case "boss" -> {
                 if (!(sender instanceof Player p)) {
                     sender.sendMessage("Only players.");
@@ -629,6 +636,93 @@ public class DcCommand implements CommandExecutor {
 
             default -> {
                 sender.sendMessage(ChatColor.YELLOW + "Используй: /dc anime <grant|clear|info|setlvl|giveitems> ...");
+                return true;
+            }
+        }
+    }
+
+    private boolean handleBenchmark(CommandSender sender, String[] args) {
+        if (!isAdmin(sender)) {
+            sender.sendMessage(ChatColor.RED + "Нет прав.");
+            return true;
+        }
+
+        if (plugin.benchmark() == null) {
+            sender.sendMessage(ChatColor.RED + "Benchmark manager is not initialized.");
+            return true;
+        }
+
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.YELLOW + "Используй: /dc benchmark <start|stop|report|reset> [seconds]");
+            return true;
+        }
+
+        String sub = args[1].toLowerCase(Locale.ROOT);
+        switch (sub) {
+            case "start" -> {
+                if (plugin.benchmark().isRunning()) {
+                    sender.sendMessage(ChatColor.RED + "Benchmark уже запущен.");
+                    return true;
+                }
+
+                int seconds = 600;
+                if (args.length >= 3) {
+                    try {
+                        seconds = Integer.parseInt(args[2]);
+                    } catch (NumberFormatException ex) {
+                        sender.sendMessage(ChatColor.RED + "Неверное число секунд: " + args[2]);
+                        return true;
+                    }
+                }
+
+                String startedBy = (sender instanceof Player p) ? p.getName() : "console";
+                boolean ok = plugin.benchmark().start(seconds, startedBy);
+                if (!ok) {
+                    sender.sendMessage(ChatColor.RED + "Не удалось запустить benchmark.");
+                    return true;
+                }
+
+                sender.sendMessage(ChatColor.GREEN + "Benchmark started for " + ChatColor.WHITE
+                        + Math.max(30, Math.min(3600, seconds)) + ChatColor.GREEN + "s.");
+                sender.sendMessage(ChatColor.GRAY + "Use /dc benchmark report when it ends.");
+                return true;
+            }
+
+            case "stop" -> {
+                var report = plugin.benchmark().stop("manual");
+                if (report == null) {
+                    sender.sendMessage(ChatColor.RED + "Benchmark не запущен.");
+                    return true;
+                }
+
+                sender.sendMessage(ChatColor.GREEN + "Benchmark остановлен.");
+                for (String line : plugin.benchmark().buildReportLines(report)) {
+                    sender.sendMessage(line);
+                }
+                return true;
+            }
+
+            case "report" -> {
+                var report = plugin.benchmark().getLastReport();
+                if (report == null) {
+                    sender.sendMessage(ChatColor.RED + "Нет сохраненного benchmark отчета.");
+                    return true;
+                }
+
+                for (String line : plugin.benchmark().buildReportLines(report)) {
+                    sender.sendMessage(line);
+                }
+                return true;
+            }
+
+            case "reset" -> {
+                plugin.benchmark().reset();
+                sender.sendMessage(ChatColor.GREEN + "Benchmark state reset.");
+                return true;
+            }
+
+            default -> {
+                sender.sendMessage(ChatColor.YELLOW + "Используй: /dc benchmark <start|stop|report|reset> [seconds]");
                 return true;
             }
         }

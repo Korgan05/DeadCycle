@@ -1,6 +1,15 @@
 package me.korgan.deadcycle.kit;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.archer.ArcherRainSkill;
+import me.korgan.deadcycle.kit.cloner.CloneModeSkill;
+import me.korgan.deadcycle.kit.cloner.CloneSummonSkill;
+import me.korgan.deadcycle.kit.duelist.DuelistAegisSkill;
+import me.korgan.deadcycle.kit.duelist.DuelistBreachSkill;
+import me.korgan.deadcycle.kit.gravitator.GravityCrushSkill;
+import me.korgan.deadcycle.kit.gravitator.LevitationStrikeSkill;
+import me.korgan.deadcycle.kit.summoner.SummonerKitManager;
+import me.korgan.deadcycle.kit.summoner.SummonerSummonSkill;
 import org.bukkit.entity.Player;
 
 import java.util.*;

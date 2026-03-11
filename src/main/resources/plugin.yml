@@ -1,5 +1,5 @@
 name: DeadCycle
-version: 0.8.8
+version: 0.8.9
 main: me.korgan.deadcycle.DeadCyclePlugin
 api-version: "1.21"
 author: Korgan
@@ -7,7 +7,7 @@ author: Korgan
 commands:
   dc:
     description: DeadCycle admin/main command
-    usage: /dc <start|stop|setphase|reload|setbase|kitlvl|boss|stat|setstat|anime>
+    usage: /dc <start|stop|setphase|reload|setbase|kitlvl|boss|stat|setstat|anime|benchmark>
 
   shop:
     description: Open DeadCycle shop

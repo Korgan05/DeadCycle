@@ -2,7 +2,6 @@ package me.korgan.deadcycle.econ;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
 import me.korgan.deadcycle.kit.KitManager;
-import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Zombie;
@@ -13,13 +12,28 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.UUID;
 
 public class EconomyManager implements Listener {
 
+    private static final class RewardWindowState {
+        long windowStartedAtMs;
+        long rewardedInWindow;
+
+        RewardWindowState(long windowStartedAtMs) {
+            this.windowStartedAtMs = windowStartedAtMs;
+            this.rewardedInWindow = 0L;
+        }
+    }
+
     private final DeadCyclePlugin plugin;
     private final File file;
     private final YamlConfiguration data;
+    private final Map<UUID, RewardWindowState> killRewardWindows = new HashMap<>();
+    private final Map<UUID, Long> rewardCapNoticeUntil = new HashMap<>();
 
     public EconomyManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
@@ -52,6 +66,8 @@ public class EconomyManager implements Listener {
 
     public void clearAll() {
         data.set("money", null);
+        killRewardWindows.clear();
+        rewardCapNoticeUntil.clear();
         save();
     }
 
@@ -76,10 +92,11 @@ public class EconomyManager implements Listener {
         if (isMiniBoss(zombie) || isBoss(zombie))
             return;
 
-        long reward = plugin.getConfig().getLong("economy.kill_zombie_reward", 5);
-        if (reward > 0) {
-            give(killer, reward);
-            killer.sendMessage(ChatColor.GREEN + "Зомби убит! +" + ChatColor.GOLD + reward + "$");
+        long reward = Math.max(0L, plugin.getConfig().getLong("economy.kill_zombie_reward", 5));
+        long grantedReward = applyKillRewardCap(killer, reward);
+        if (grantedReward > 0) {
+            give(killer, grantedReward);
+            killer.sendMessage("§aЗомби убит! +§6" + grantedReward + "$");
         }
 
         int playerExp = plugin.getConfig().getInt("player_progress.kill_exp.zombie", 2);
@@ -135,6 +152,67 @@ public class EconomyManager implements Listener {
             int exp = plugin.getConfig().getInt("kit_xp.summoner.exp_per_zombie", 1);
             if (exp > 0)
                 plugin.progress().addSummonerExp(killer, exp);
+        }
+    }
+
+    private long applyKillRewardCap(Player killer, long baseReward) {
+        if (baseReward <= 0L)
+            return 0L;
+
+        long capPerWindow = plugin.getConfig().getLong("economy.kill_reward_cap.max_reward_in_window", 0L);
+        if (capPerWindow <= 0L)
+            return baseReward;
+
+        long windowSeconds = Math.max(5L, plugin.getConfig().getLong("economy.kill_reward_cap.window_seconds", 60L));
+        long windowMs = windowSeconds * 1000L;
+        long now = System.currentTimeMillis();
+        UUID playerId = killer.getUniqueId();
+
+        RewardWindowState state = killRewardWindows.computeIfAbsent(playerId, ignored -> new RewardWindowState(now));
+        if (now - state.windowStartedAtMs >= windowMs) {
+            state.windowStartedAtMs = now;
+            state.rewardedInWindow = 0L;
+        }
+
+        long remaining = capPerWindow - state.rewardedInWindow;
+        if (remaining <= 0L) {
+            maybeNotifyRewardCap(killer, capPerWindow, windowSeconds, now);
+            cleanupOldRewardWindows(now, windowMs * 3L);
+            return 0L;
+        }
+
+        long granted = Math.min(baseReward, remaining);
+        state.rewardedInWindow += granted;
+
+        if (granted < baseReward) {
+            maybeNotifyRewardCap(killer, capPerWindow, windowSeconds, now);
+        }
+
+        cleanupOldRewardWindows(now, windowMs * 3L);
+        return granted;
+    }
+
+    private void maybeNotifyRewardCap(Player killer, long capPerWindow, long windowSeconds, long now) {
+        UUID playerId = killer.getUniqueId();
+        long noticeUntil = rewardCapNoticeUntil.getOrDefault(playerId, 0L);
+        if (now < noticeUntil)
+            return;
+
+        rewardCapNoticeUntil.put(playerId, now + 5000L);
+        killer.sendMessage("§7[Экономика] Лимит наград: §f" + capPerWindow + "$§7/" + windowSeconds + "с.");
+    }
+
+    private void cleanupOldRewardWindows(long now, long staleAfterMs) {
+        if (killRewardWindows.isEmpty())
+            return;
+
+        Iterator<Map.Entry<UUID, RewardWindowState>> iterator = killRewardWindows.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<UUID, RewardWindowState> entry = iterator.next();
+            if (now - entry.getValue().windowStartedAtMs > staleAfterMs) {
+                iterator.remove();
+                rewardCapNoticeUntil.remove(entry.getKey());
+            }
         }
     }
 

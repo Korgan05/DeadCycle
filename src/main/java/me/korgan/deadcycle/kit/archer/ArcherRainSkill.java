@@ -1,6 +1,7 @@
-package me.korgan.deadcycle.kit;
+package me.korgan.deadcycle.kit.archer;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
+import me.korgan.deadcycle.kit.Skill;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 

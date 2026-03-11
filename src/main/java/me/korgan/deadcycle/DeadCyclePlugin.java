@@ -6,6 +6,10 @@ import me.korgan.deadcycle.boss.BossDuelManager;
 import me.korgan.deadcycle.boss.MiniBossManager;
 import me.korgan.deadcycle.econ.*;
 import me.korgan.deadcycle.kit.*;
+import me.korgan.deadcycle.kit.berserk.BerserkListener;
+import me.korgan.deadcycle.kit.cloner.CloneKitManager;
+import me.korgan.deadcycle.kit.duelist.DuelistBossPassiveListener;
+import me.korgan.deadcycle.kit.summoner.SummonerKitManager;
 import me.korgan.deadcycle.mobs.*;
 import me.korgan.deadcycle.phase.*;
 import me.korgan.deadcycle.player.*;
@@ -51,10 +55,10 @@ public class DeadCyclePlugin extends JavaPlugin {
     private RegenMiningListener regenMining;
 
     private DeathSpectatorManager deathSpectator;
+    private BenchmarkManager benchmark;
 
     private RepairGUI repairGui;
     private BaseGUI baseGui;
-    private BaseUpgradeGUI baseUpgradeGui;
     private WallUpgradeGUI wallUpgradeGui;
 
     private ShopGUI shopGui;
@@ -97,10 +101,10 @@ public class DeadCyclePlugin extends JavaPlugin {
         bossHelpScrollListener = new me.korgan.deadcycle.boss.BossHelpScrollListener(this);
 
         deathSpectator = new DeathSpectatorManager(this);
+        benchmark = new BenchmarkManager(this);
 
         repairGui = new RepairGUI(this, blockHealth);
         baseGui = new BaseGUI(this);
-        baseUpgradeGui = new BaseUpgradeGUI(this);
         wallUpgradeGui = new WallUpgradeGUI(this);
 
         shopGui = new ShopGUI(this);
@@ -110,7 +114,9 @@ public class DeadCyclePlugin extends JavaPlugin {
         // listeners
         Bukkit.getPluginManager().registerEvents(new GameRulesController(this), this);
         Bukkit.getPluginManager().registerEvents(new PlayerRulesListener(this), this);
+        Bukkit.getPluginManager().registerEvents(phase, this);
         Bukkit.getPluginManager().registerEvents(deathSpectator, this);
+        Bukkit.getPluginManager().registerEvents(benchmark, this);
         Bukkit.getPluginManager().registerEvents(new TemporaryBlocksListener(this), this);
         Bukkit.getPluginManager().registerEvents(new ManaListener(this), this);
         Bukkit.getPluginManager().registerEvents(specialSkills, this);
@@ -139,7 +145,6 @@ public class DeadCyclePlugin extends JavaPlugin {
 
         Bukkit.getPluginManager().registerEvents(repairGui, this);
         Bukkit.getPluginManager().registerEvents(baseGui, this);
-        Bukkit.getPluginManager().registerEvents(baseUpgradeGui, this);
         Bukkit.getPluginManager().registerEvents(wallUpgradeGui, this);
 
         Bukkit.getPluginManager().registerEvents(shopGui, this);
@@ -213,6 +218,8 @@ public class DeadCyclePlugin extends JavaPlugin {
             specialSkills.shutdown();
         if (animePowers != null)
             animePowers.shutdown();
+        if (benchmark != null)
+            benchmark.shutdown();
 
         if (baseResources != null)
             baseResources.save();
@@ -348,16 +355,16 @@ public class DeadCyclePlugin extends JavaPlugin {
         return deathSpectator;
     }
 
+    public BenchmarkManager benchmark() {
+        return benchmark;
+    }
+
     public RepairGUI repairGui() {
         return repairGui;
     }
 
     public BaseGUI baseGui() {
         return baseGui;
-    }
-
-    public BaseUpgradeGUI baseUpgradeGui() {
-        return baseUpgradeGui;
     }
 
     public WallUpgradeGUI wallUpgradeGui() {
