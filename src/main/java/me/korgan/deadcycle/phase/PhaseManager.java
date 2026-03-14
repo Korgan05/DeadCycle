@@ -194,6 +194,9 @@ public class PhaseManager implements Listener {
             if (plugin.mana() != null) {
                 plugin.mana().prepareCarryoverForReset();
             }
+            if (plugin.progress() != null) {
+                plugin.progress().preparePlayerProgressForReset();
+            }
 
             // 1. СНАЧАЛА очищаем все данные в players.yml (уровни китов, опыт, мана и т.д.)
             if (plugin.playerData() != null)
@@ -203,7 +206,7 @@ public class PhaseManager implements Listener {
             if (plugin.econ() != null)
                 plugin.econ().clearAll();
 
-            // 3. Сбрасываем специальные навыки (авто-хил, авто-реген, уклонение)
+            // 3. Сбрасываем прогресс специальных навыков
             if (plugin.specialSkills() != null)
                 plugin.specialSkills().resetAll();
 

@@ -153,6 +153,41 @@ public class EconomyManager implements Listener {
             if (exp > 0)
                 plugin.progress().addSummonerExp(killer, exp);
         }
+
+        // XP пингу за убийство
+        if (kit == KitManager.Kit.PING) {
+            int exp = plugin.getConfig().getInt("kit_xp.ping.exp_per_zombie", 2);
+            if (exp > 0)
+                plugin.progress().addPingExp(killer, exp);
+        }
+
+        // XP гарпунеру за убийство
+        if (kit == KitManager.Kit.HARPOONER) {
+            int exp = plugin.getConfig().getInt("kit_xp.harpooner.exp_per_zombie", 2);
+            if (exp > 0)
+                plugin.progress().addHarpoonerExp(killer, exp);
+        }
+
+        // XP киборгу за убийство
+        if (kit == KitManager.Kit.CYBORG) {
+            int exp = plugin.getConfig().getInt("kit_xp.cyborg.exp_per_zombie", 2);
+            if (exp > 0)
+                plugin.progress().addCyborgExp(killer, exp);
+        }
+
+        // XP медику за убийство
+        if (kit == KitManager.Kit.MEDIC) {
+            int exp = plugin.getConfig().getInt("kit_xp.medic.exp_per_zombie", 2);
+            if (exp > 0)
+                plugin.progress().addMedicExp(killer, exp);
+        }
+
+        // XP экзорцисту за убийство
+        if (kit == KitManager.Kit.EXORCIST) {
+            int exp = plugin.getConfig().getInt("kit_xp.exorcist.exp_per_zombie", 2);
+            if (exp > 0)
+                plugin.progress().addExorcistExp(killer, exp);
+        }
     }
 
     private long applyKillRewardCap(Player killer, long baseReward) {

@@ -2,12 +2,16 @@ package me.korgan.deadcycle.kit;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Trident;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.ItemStack;
 
 /**
@@ -33,6 +37,46 @@ public class SkillItemProtectionListener implements Listener {
             e.setCancelled(true);
             e.getPlayer().sendMessage("§cЭтот предмет нельзя выбросить!");
         }
+    }
+
+    /**
+     * Блокировать потерю прочности у защищённых предметов скиллов.
+     */
+    @EventHandler
+    public void onPlayerItemDamage(PlayerItemDamageEvent e) {
+        if (plugin.kit().isProtectedSkillItem(e.getItem())) {
+            e.setCancelled(true);
+        }
+    }
+
+    /**
+     * Блокировать бросок трезубца, если это трезубец-скилл Гарпунера.
+     */
+    @EventHandler
+    public void onProjectileLaunch(ProjectileLaunchEvent e) {
+        if (!(e.getEntity() instanceof Trident trident))
+            return;
+        if (!(e.getEntity().getShooter() instanceof Player player))
+            return;
+
+        ItemStack launched = trident.getItemStack();
+        if (launched != null && plugin.kit().isProtectedSkillItem(launched)) {
+            e.setCancelled(true);
+            player.sendMessage("§cТрезубец-скилл нельзя бросать как обычное оружие.");
+            return;
+        }
+
+        PlayerInventory inv = player.getInventory();
+        ItemStack main = inv.getItemInMainHand();
+        if (main == null)
+            return;
+        if (main.getType() != org.bukkit.Material.TRIDENT)
+            return;
+        if (!plugin.kit().isProtectedSkillItem(main))
+            return;
+
+        e.setCancelled(true);
+        player.sendMessage("§cТрезубец-скилл нельзя бросать как обычное оружие.");
     }
 
     /**

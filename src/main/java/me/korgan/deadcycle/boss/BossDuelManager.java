@@ -103,6 +103,7 @@ public class BossDuelManager implements Listener {
     private final Map<UUID, Integer> antiCheatFastHitScore = new HashMap<>();
     private final Map<UUID, MovementPatternState> antiCheatMovement = new HashMap<>();
     private final Map<UUID, Long> antiCheatPunishCooldown = new HashMap<>();
+    private final Map<UUID, Long> adaptationCounterSpeakCooldown = new HashMap<>();
     private BukkitTask assistCheckTask;
 
     private static class MovementPatternState {
@@ -703,6 +704,7 @@ public class BossDuelManager implements Listener {
         restoreArena();
 
         helpItemGiven = false;
+        UUID allyIdSnapshot = allyPlayerUuid;
         allyPlayerUuid = null;
         allyUsed = false;
         bossFocusUuid = null;
@@ -712,6 +714,7 @@ public class BossDuelManager implements Listener {
         antiCheatFastHitScore.clear();
         antiCheatMovement.clear();
         antiCheatPunishCooldown.clear();
+        adaptationCounterSpeakCooldown.clear();
         warnCooldown.clear();
         lastForceSeparationTime = 0L;
 
@@ -727,12 +730,22 @@ public class BossDuelManager implements Listener {
 
         // Телепортируем игрока обратно на базу
         Player duelPlayer = duelPlayerUuid != null ? Bukkit.getPlayer(duelPlayerUuid) : null;
+        Player allyPlayer = allyIdSnapshot != null ? Bukkit.getPlayer(allyIdSnapshot) : null;
         if (duelPlayer != null && duelPlayer.isOnline()) {
             Location baseLocation = plugin.base() != null ? plugin.base().getCenter() : null;
             if (baseLocation != null) {
                 duelPlayer.teleport(baseLocation);
             } else if (lastInsideLocation != null) {
                 duelPlayer.teleport(lastInsideLocation);
+            }
+        }
+
+        if (allyPlayer != null && allyPlayer.isOnline()) {
+            Location baseLocation = plugin.base() != null ? plugin.base().getCenter() : null;
+            if (baseLocation != null) {
+                allyPlayer.teleport(baseLocation);
+            } else if (lastInsideLocation != null) {
+                allyPlayer.teleport(lastInsideLocation);
             }
         }
 
@@ -813,7 +826,13 @@ public class BossDuelManager implements Listener {
     }
 
     private void sendBossMessage(String text) {
-        // Removed all boss messages
+        if (text == null || text.isBlank())
+            return;
+
+        String message = BOSS_PREFIX + text;
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            online.sendMessage(message);
+        }
     }
 
     private void sendSkillAdaptationMessage(Player player, String skillName, int tier) {
@@ -824,10 +843,87 @@ public class BossDuelManager implements Listener {
             case 2 -> "II";
             default -> "III";
         };
-        String message = BOSS_PREFIX + "Я адаптируюсь: " + who + ", " + skill + " (уровень " + tierText + ").";
+        String message = BOSS_PREFIX + "... " + "Я адаптируюсь: " + who + ", " + skill + " (уровень " + tierText
+                + ").";
         for (Player online : Bukkit.getOnlinePlayers()) {
             online.sendMessage(message);
         }
+    }
+
+    void announceAdaptationCounter(Player player, String skillName, int tier) {
+        if (player == null || skillName == null)
+            return;
+
+        long now = System.currentTimeMillis();
+        UUID playerId = player.getUniqueId();
+        long last = adaptationCounterSpeakCooldown.getOrDefault(playerId, 0L);
+        if (now - last < 2200L)
+            return;
+        adaptationCounterSpeakCooldown.put(playerId, now);
+
+        String skill = humanReadableSkillName(skillName);
+        String who = player.getName();
+        String line = buildTypedCounterLine(who, skillName, skill, tier);
+
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            online.sendMessage(BOSS_PREFIX + line);
+        }
+    }
+
+    private enum CounterReadType {
+        MOBILITY,
+        CONTROL,
+        SUMMON,
+        OTHER
+    }
+
+    private String buildTypedCounterLine(String who, String skillName, String humanSkill, int tier) {
+        int t = Math.max(1, Math.min(3, tier));
+        CounterReadType type = resolveCounterReadType(skillName);
+
+        return switch (type) {
+            case MOBILITY -> switch (t) {
+                case 1 -> "Читаю мобильность, " + who + ": " + humanSkill + ".";
+                case 2 -> "Прочитал мобильность, " + who + ": " + humanSkill + ".";
+                default -> "Мобильность закрыта, " + who + ": " + humanSkill + ".";
+            };
+            case CONTROL -> switch (t) {
+                case 1 -> "Читаю контроль, " + who + ": " + humanSkill + ".";
+                case 2 -> "Прочитал контроль, " + who + ": " + humanSkill + ".";
+                default -> "Контроль закрыт, " + who + ": " + humanSkill + ".";
+            };
+            case SUMMON -> switch (t) {
+                case 1 -> "Читаю призыв, " + who + ": " + humanSkill + ".";
+                case 2 -> "Прочитал призыв, " + who + ": " + humanSkill + ".";
+                default -> "Призыв закрыт, " + who + ": " + humanSkill + ".";
+            };
+            case OTHER -> switch (t) {
+                case 1 -> "Запомнил твой темп, " + who + ": " + humanSkill + ".";
+                case 2 -> "Читаю этот прием, " + who + ": " + humanSkill + ".";
+                default -> "Этот ход закрыт, " + who + ": " + humanSkill + ".";
+            };
+        };
+    }
+
+    private CounterReadType resolveCounterReadType(String skillName) {
+        if (skillName == null || skillName.isBlank())
+            return CounterReadType.OTHER;
+
+        return switch (skillName) {
+            case "ping_blink", "berserk_blood_dash", "duelist_feint", "harpoon_pull", "cyborg_slam" ->
+                CounterReadType.MOBILITY;
+
+            case "gravity_crush", "levitation_strike", "archer_trap_arrow", "archer_ricochet",
+                    "ping_pulse", "ping_jitter", "harpoon_anchor", "duelist_counter_stance",
+                    "circle_trance", "exorcist_purge" ->
+                CounterReadType.CONTROL;
+
+            case "clone_summon", "summoner_wolves", "summoner_phantom", "summoner_golem", "summoner_vex",
+                    "summoner_focus", "summoner_regroup", "summoner_sacrifice" ->
+                CounterReadType.SUMMON;
+
+            default -> CounterReadType.OTHER;
+        };
     }
 
     private String humanReadableSkillName(String skillName) {
@@ -837,15 +933,33 @@ public class BossDuelManager implements Listener {
             case "gravity_crush" -> "Гравитационный пресс";
             case "levitation_strike" -> "Левитационный удар";
             case "archer_rain" -> "Дождь стрел";
+            case "archer_mark" -> "Метка охотника";
+            case "archer_trap_arrow" -> "Капкан-стрела";
+            case "archer_ricochet" -> "Рикошет";
             case "berserk" -> "Берсерк";
+            case "berserk_blood_dash" -> "Кровавый рывок";
+            case "berserk_execution" -> "Казнь";
             case "ritual_cut" -> "Ритуальный разрез";
             case "circle_trance" -> "Трансовый круг";
+            case "duelist_counter_stance" -> "Контрстойка";
+            case "duelist_feint" -> "Финт";
             case "fighter_combo" -> "Комбо бойца";
             case "clone_summon" -> "Призыв клонов";
             case "summoner_wolves" -> "Призыв волков";
             case "summoner_phantom" -> "Призыв фантома";
             case "summoner_golem" -> "Призыв голема";
             case "summoner_vex" -> "Призыв векса";
+            case "summoner_focus" -> "Фокус-команда";
+            case "summoner_regroup" -> "Перегруппировка";
+            case "summoner_sacrifice" -> "Жертвенный импульс";
+            case "ping_blink" -> "Пинг-рывок";
+            case "ping_pulse" -> "Пинг-импульс";
+            case "ping_jitter" -> "Джиттер";
+            case "harpoon_anchor" -> "Якорный гарпун";
+            case "harpoon_pull" -> "Подтяжка";
+            case "cyborg_slam" -> "Реактивный таран";
+            case "medic_wave" -> "Полевая терапия";
+            case "exorcist_purge" -> "Священный изгиб";
             default -> skillName;
         };
     }
@@ -950,6 +1064,8 @@ public class BossDuelManager implements Listener {
 
     private boolean isValidDuelTarget(Player p) {
         if (p == null || !p.isOnline() || p.isDead())
+            return false;
+        if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR)
             return false;
         if (!isDuelPlayer(p.getUniqueId()))
             return false;
@@ -1079,6 +1195,61 @@ public class BossDuelManager implements Listener {
         return isValidBossMobTarget(target);
     }
 
+    private void triggerSummonerCounterShockwave(Zombie boss, int tier) {
+        if (boss == null || boss.isDead())
+            return;
+
+        double radius = Math.max(3.0, plugin.getConfig().getDouble("boss.summoner_counter.shockwave_radius", 6.5));
+        double basePower = Math.max(0.2, plugin.getConfig().getDouble("boss.summoner_counter.shockwave_power", 1.0));
+        double powerPerTier = Math.max(0.0,
+                plugin.getConfig().getDouble("boss.summoner_counter.shockwave_tier_bonus", 0.18));
+        double baseUpward = Math.max(0.05,
+                plugin.getConfig().getDouble("boss.summoner_counter.shockwave_upward", 0.24));
+        double upwardPerTier = Math.max(0.0,
+                plugin.getConfig().getDouble("boss.summoner_counter.shockwave_upward_tier_bonus", 0.03));
+
+        int tierOffset = Math.max(0, tier - 1);
+        double power = basePower + powerPerTier * tierOffset;
+        double upward = baseUpward + upwardPerTier * tierOffset;
+
+        Location center = boss.getLocation();
+        int affected = 0;
+
+        for (Entity entity : boss.getWorld().getNearbyEntities(center, radius, radius, radius)) {
+            if (!(entity instanceof LivingEntity living))
+                continue;
+            if (living.getUniqueId().equals(boss.getUniqueId()))
+                continue;
+            if (living.isDead() || !living.isValid())
+                continue;
+
+            if (living instanceof Player player) {
+                if (!isValidDuelTarget(player))
+                    continue;
+            } else if (!isValidBossMobTarget(living)) {
+                continue;
+            }
+
+            Vector push = living.getLocation().toVector().subtract(center.toVector()).setY(0.0);
+            if (push.lengthSquared() < 0.0001) {
+                push = new Vector(rng.nextDouble() - 0.5, 0.0, rng.nextDouble() - 0.5);
+            }
+            if (push.lengthSquared() < 0.0001) {
+                push = new Vector(0, 0, 1);
+            }
+
+            living.setVelocity(living.getVelocity().multiply(0.2).add(push.normalize().multiply(power).setY(upward)));
+            affected++;
+        }
+
+        if (affected > 0) {
+            Location fx = center.clone().add(0, 1.0, 0);
+            boss.getWorld().spawnParticle(Particle.SONIC_BOOM, fx, 1, 0.0, 0.0, 0.0, 0.0);
+            boss.getWorld().spawnParticle(Particle.CLOUD, fx, 24, 0.45, 0.22, 0.45, 0.01);
+            boss.getWorld().playSound(center, Sound.ENTITY_WARDEN_SONIC_BOOM, 0.65f, 1.35f);
+        }
+    }
+
     private LivingEntity findNearestMobAllyTarget(Zombie boss, double radius) {
         LivingEntity best = null;
         double bestDist = radius * radius;
@@ -1106,12 +1277,14 @@ public class BossDuelManager implements Listener {
         LivingEntity current = (boss.getTarget() instanceof LivingEntity living) ? living : null;
         if (isValidBossMobTarget(current)) {
             double keepDist = boss.getLocation().distanceSquared(current.getLocation());
-            if (keepDist <= 20.0 * 20.0)
+            boolean flyingCurrent = current instanceof org.bukkit.entity.Phantom
+                    || current instanceof org.bukkit.entity.Vex;
+            if (!flyingCurrent && keepDist <= 20.0 * 20.0)
                 return current;
         }
 
-        LivingEntity mobTarget = findNearestMobAllyTarget(boss, 22.0);
         Player playerTarget = pickSmartTarget(boss);
+        LivingEntity mobTarget = findNearestMobAllyTarget(boss, 22.0);
 
         if (mobTarget == null)
             return playerTarget;
@@ -1120,9 +1293,51 @@ public class BossDuelManager implements Listener {
 
         double mobDist = boss.getLocation().distanceSquared(mobTarget.getLocation());
         double playerDist = boss.getLocation().distanceSquared(playerTarget.getLocation());
-        if (mobDist <= playerDist + 9.0)
+
+        boolean flyingMob = mobTarget instanceof org.bukkit.entity.Phantom
+                || mobTarget instanceof org.bukkit.entity.Vex;
+        if (flyingMob)
+            return playerTarget;
+
+        if (mobDist + 4.0 < playerDist && rng.nextDouble() < 0.55)
             return mobTarget;
         return playerTarget;
+    }
+
+    private LivingEntity resolvePreferredPetResponseTarget(LivingEntity petDamager) {
+        if (petDamager == null)
+            return null;
+
+        Player duel = getDuelPlayer();
+        Player ally = getAllyPlayer();
+
+        Player nearestPlayer = null;
+        double bestDist = Double.MAX_VALUE;
+
+        if (isValidDuelTarget(duel)) {
+            double dist = duel.getLocation().distanceSquared(petDamager.getLocation());
+            nearestPlayer = duel;
+            bestDist = dist;
+        }
+        if (isValidDuelTarget(ally)) {
+            double dist = ally.getLocation().distanceSquared(petDamager.getLocation());
+            if (nearestPlayer == null || dist < bestDist) {
+                nearestPlayer = ally;
+                bestDist = dist;
+            }
+        }
+
+        boolean flyingPet = petDamager instanceof org.bukkit.entity.Phantom
+                || petDamager instanceof org.bukkit.entity.Vex;
+        if (flyingPet && nearestPlayer != null) {
+            return nearestPlayer;
+        }
+
+        if (nearestPlayer != null && bestDist <= (7.0 * 7.0)) {
+            return nearestPlayer;
+        }
+
+        return petDamager;
     }
 
     private LivingEntity resolveCombatPetDamager(Entity damager) {
@@ -1253,6 +1468,8 @@ public class BossDuelManager implements Listener {
         }
 
         if (isDuelPlayer(p.getUniqueId())) {
+            if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR)
+                return;
             if (e.getTo() == null)
                 return;
             if (e.getTo().getWorld() != duelCenter.getWorld())
@@ -1262,7 +1479,9 @@ public class BossDuelManager implements Listener {
 
             double distSq = e.getTo().distanceSquared(duelCenter);
             if (distSq <= DUEL_RADIUS * DUEL_RADIUS) {
-                lastInsideLocation = e.getTo().clone();
+                if (duelPlayerUuid != null && duelPlayerUuid.equals(p.getUniqueId())) {
+                    lastInsideLocation = e.getTo().clone();
+                }
                 return;
             }
 
@@ -1315,13 +1534,74 @@ public class BossDuelManager implements Listener {
     public void onTeleport(PlayerTeleportEvent e) {
         if (!active)
             return;
-        if (!isDuelPlayer(e.getPlayer().getUniqueId()))
+        Player player = e.getPlayer();
+        if (!isDuelPlayer(player.getUniqueId()))
+            return;
+        if (player.getGameMode() == org.bukkit.GameMode.SPECTATOR)
             return;
         if (internalTeleport)
             return;
         // Не считать побегом во время инициализации
         if (stage == Stage.INIT || stage == Stage.FREEZE)
             return;
+
+        if (e.getCause() == PlayerTeleportEvent.TeleportCause.ENDER_PEARL) {
+            Location to = e.getTo();
+            if (to == null || duelCenter == null || duelCenter.getWorld() == null || to.getWorld() == null
+                    || !to.getWorld().getUID().equals(duelCenter.getWorld().getUID())) {
+                e.setCancelled(true);
+                Location safe = (lastInsideLocation != null) ? lastInsideLocation.clone() : duelCenter.clone();
+                internalTeleport = true;
+                player.teleport(safe, PlayerTeleportEvent.TeleportCause.PLUGIN);
+                Bukkit.getScheduler().runTaskLater(plugin, () -> internalTeleport = false, 2L);
+                player.sendMessage("§cЭндер-перл не может вывести тебя за пределы арены.");
+                return;
+            }
+
+            if (!isInsideDuelZone(to, -1.0)) {
+                e.setCancelled(true);
+
+                Vector dir = to.toVector().subtract(duelCenter.toVector()).setY(0.0);
+                if (dir.lengthSquared() < 0.0001) {
+                    dir = player.getLocation().getDirection().setY(0.0);
+                }
+                if (dir.lengthSquared() < 0.0001) {
+                    dir = new Vector(1, 0, 0);
+                }
+
+                Location safe = duelCenter.clone().add(dir.normalize().multiply(DUEL_RADIUS - 1.5));
+                safe.setY(Math.max(player.getLocation().getY(), duelCenter.getY()));
+
+                internalTeleport = true;
+                player.teleport(safe, PlayerTeleportEvent.TeleportCause.PLUGIN);
+                Bukkit.getScheduler().runTaskLater(plugin, () -> internalTeleport = false, 2L);
+                player.sendMessage("§cЭндер-перл не может вывести тебя за пределы арены.");
+            }
+            return;
+        }
+
+        if (e.getCause() == PlayerTeleportEvent.TeleportCause.PLUGIN) {
+            Location to = e.getTo();
+            if (to != null
+                    && duelCenter != null
+                    && duelCenter.getWorld() != null
+                    && to.getWorld() != null
+                    && to.getWorld().getUID().equals(duelCenter.getWorld().getUID())
+                    && isInsideDuelZone(to, -1.0)) {
+                if (duelPlayerUuid != null && duelPlayerUuid.equals(player.getUniqueId())) {
+                    lastInsideLocation = to.clone();
+                }
+                return;
+            }
+
+            e.setCancelled(true);
+            Location safe = (lastInsideLocation != null) ? lastInsideLocation.clone() : duelCenter.clone();
+            internalTeleport = true;
+            player.teleport(safe, PlayerTeleportEvent.TeleportCause.PLUGIN);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> internalTeleport = false, 2L);
+            player.sendMessage("§cНавыком нельзя телепортироваться за пределы арены.");
+            return;
+        }
 
         // Removed boss message
         endDuel("teleport", false, true);
@@ -1366,12 +1646,14 @@ public class BossDuelManager implements Listener {
     private int countAlivePlayersInArena() {
         int count = 0;
         Player main = getDuelPlayer();
-        if (main != null && main.isOnline() && !main.isDead()) {
+        if (main != null && main.isOnline() && !main.isDead()
+                && main.getGameMode() != org.bukkit.GameMode.SPECTATOR) {
             count++;
         }
         if (allyPlayerUuid != null) {
             Player ally = Bukkit.getPlayer(allyPlayerUuid);
-            if (ally != null && ally.isOnline() && !ally.isDead()) {
+            if (ally != null && ally.isOnline() && !ally.isDead()
+                    && ally.getGameMode() != org.bukkit.GameMode.SPECTATOR) {
                 count++;
             }
         }
@@ -1431,6 +1713,24 @@ public class BossDuelManager implements Listener {
     }
 
     @EventHandler
+    public void onBossDealsDamage(EntityDamageByEntityEvent e) {
+        if (!active || stage != Stage.FIGHT)
+            return;
+        if (!(e.getDamager() instanceof Zombie z))
+            return;
+        if (!z.getPersistentDataContainer().has(bossKey, PersistentDataType.BYTE))
+            return;
+        if (!(e.getEntity() instanceof LivingEntity target))
+            return;
+        if (!isValidBossMobTarget(target))
+            return;
+
+        double mult = plugin.getConfig().getDouble("boss.summoner_counter.mob_damage_multiplier", 0.55);
+        mult = Math.max(0.05, Math.min(1.0, mult));
+        e.setDamage(e.getDamage() * mult);
+    }
+
+    @EventHandler
     public void onBossDamaged(EntityDamageByEntityEvent e) {
         if (!active || stage != Stage.FIGHT)
             return;
@@ -1442,7 +1742,10 @@ public class BossDuelManager implements Listener {
         LivingEntity petDamager = resolveCombatPetDamager(e.getDamager());
         if (petDamager != null && !(petDamager instanceof Player) && isValidBossMobTarget(petDamager)) {
             equipBossWeaponIfNeeded(z);
-            z.setTarget(petDamager);
+            LivingEntity preferred = resolvePreferredPetResponseTarget(petDamager);
+            if (preferred != null) {
+                z.setTarget(preferred);
+            }
             return;
         }
 
@@ -1502,9 +1805,22 @@ public class BossDuelManager implements Listener {
             if (tier <= 0) {
                 if ("gravity_crush".equals(skill) || "levitation_strike".equals(skill)
                         || "archer_rain".equals(skill)
+                        || "archer_mark".equals(skill)
+                        || "archer_trap_arrow".equals(skill)
+                        || "archer_ricochet".equals(skill)
                         || "berserk".equals(skill)
+                        || "berserk_blood_dash".equals(skill)
+                        || "berserk_execution".equals(skill)
                         || "ritual_cut".equals(skill)
                         || "circle_trance".equals(skill)
+                        || "duelist_counter_stance".equals(skill)
+                        || "duelist_feint".equals(skill)
+                        || "summoner_focus".equals(skill)
+                        || "summoner_regroup".equals(skill)
+                        || "summoner_sacrifice".equals(skill)
+                        || "ping_blink".equals(skill)
+                        || "ping_pulse".equals(skill)
+                        || "ping_jitter".equals(skill)
                         || "fighter_combo".equals(skill)) {
                     dodgeChance = 0.0;
                     counterChance = 0.0;
@@ -1585,10 +1901,12 @@ public class BossDuelManager implements Listener {
 
         // Фильтруем: только живые, онлайн, в арене
         java.util.List<Player> players = new java.util.ArrayList<>();
-        if (main != null && main.isOnline() && !main.isDead()) {
+        if (main != null && main.isOnline() && !main.isDead()
+                && main.getGameMode() != org.bukkit.GameMode.SPECTATOR) {
             players.add(main);
         }
-        if (ally != null && ally.isOnline() && !ally.isDead()) {
+        if (ally != null && ally.isOnline() && !ally.isDead()
+                && ally.getGameMode() != org.bukkit.GameMode.SPECTATOR) {
             players.add(ally);
         }
 
@@ -2490,7 +2808,7 @@ public class BossDuelManager implements Listener {
         }
 
         // Ally is invalid (dead, offline, left world)
-        if (ally == null || !ally.isOnline() || ally.isDead()) {
+        if (ally == null || !ally.isOnline() || ally.isDead() || ally.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
             allyPlayerUuid = null;
             return;
         }
@@ -2547,6 +2865,10 @@ public class BossDuelManager implements Listener {
 
     void adaptationTeleportBehind(Player player, Zombie boss) {
         teleportBossBehindPlayer(player, boss);
+    }
+
+    void adaptationSummonerShockwave(Zombie boss, int tier) {
+        triggerSummonerCounterShockwave(boss, tier);
     }
 
     void announceSkillAdaptation(Player player, String skillName, int tier) {

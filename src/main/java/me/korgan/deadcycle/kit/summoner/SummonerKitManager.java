@@ -37,6 +37,8 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
@@ -103,6 +105,13 @@ public class SummonerKitManager implements Listener {
     private final Map<UUID, Long> summonExpireAt = new HashMap<>();
     private final Map<UUID, Double> ownerUpkeepAccumulator = new HashMap<>();
     private final Map<UUID, Long> ownerUpkeepWarnUntil = new HashMap<>();
+    private final Map<UUID, UUID> ownerForcedTarget = new HashMap<>();
+    private final Map<UUID, Long> ownerForcedTargetUntil = new HashMap<>();
+    private final Map<UUID, Long> ownerSacrificeDamageBonusUntil = new HashMap<>();
+    private final Map<UUID, Double> ownerSacrificeDamageBonusMultiplier = new HashMap<>();
+    private final Map<UUID, Long> summonNextRetargetAt = new HashMap<>();
+    private final Map<UUID, Location> summonLastKnownLocation = new HashMap<>();
+    private final Map<UUID, Long> summonLastProgressAt = new HashMap<>();
 
     private final Map<UUID, UUID> lastHitOwnerByZombie = new HashMap<>();
     private final Map<UUID, Long> lastHitAtByZombie = new HashMap<>();
@@ -149,6 +158,10 @@ public class SummonerKitManager implements Listener {
 
     private double deathWardenHp;
     private double deathWardenDamage;
+    private long aiRetargetIntervalMs;
+    private long aiStuckTimeoutMs;
+    private double aiStuckMinDistanceToOwner;
+    private double aiTargetDropDistance;
 
     public SummonerKitManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
@@ -208,8 +221,24 @@ public class SummonerKitManager implements Listener {
         this.deathWardenDamage = Math.max(2.0,
                 plugin.getConfig().getDouble("summoner.death_warden.damage", 18.0));
 
+        this.aiRetargetIntervalMs = Math.max(250L,
+                plugin.getConfig().getLong("summoner.ai.retarget_interval_ms", 900L));
+        this.aiStuckTimeoutMs = Math.max(1000L,
+                plugin.getConfig().getLong("summoner.ai.stuck_timeout_ms", 2500L));
+        this.aiStuckMinDistanceToOwner = Math.max(2.0,
+                plugin.getConfig().getDouble("summoner.ai.stuck_min_distance_to_owner", 6.0));
+        this.aiTargetDropDistance = Math.max(8.0,
+                plugin.getConfig().getDouble("summoner.ai.target_drop_distance", 30.0));
+
         if (!enabled) {
             removeAllSummons();
+            ownerForcedTarget.clear();
+            ownerForcedTargetUntil.clear();
+            ownerSacrificeDamageBonusUntil.clear();
+            ownerSacrificeDamageBonusMultiplier.clear();
+            summonNextRetargetAt.clear();
+            summonLastKnownLocation.clear();
+            summonLastProgressAt.clear();
         }
     }
 
@@ -225,6 +254,13 @@ public class SummonerKitManager implements Listener {
         lastHitAtByZombie.clear();
         ownerUpkeepAccumulator.clear();
         ownerUpkeepWarnUntil.clear();
+        ownerForcedTarget.clear();
+        ownerForcedTargetUntil.clear();
+        ownerSacrificeDamageBonusUntil.clear();
+        ownerSacrificeDamageBonusMultiplier.clear();
+        summonNextRetargetAt.clear();
+        summonLastKnownLocation.clear();
+        summonLastProgressAt.clear();
     }
 
     public void resetAll() {
@@ -235,6 +271,13 @@ public class SummonerKitManager implements Listener {
         lastHitAtByZombie.clear();
         ownerUpkeepAccumulator.clear();
         ownerUpkeepWarnUntil.clear();
+        ownerForcedTarget.clear();
+        ownerForcedTargetUntil.clear();
+        ownerSacrificeDamageBonusUntil.clear();
+        ownerSacrificeDamageBonusMultiplier.clear();
+        summonNextRetargetAt.clear();
+        summonLastKnownLocation.clear();
+        summonLastProgressAt.clear();
     }
 
     public boolean isEnabled() {
@@ -273,13 +316,20 @@ public class SummonerKitManager implements Listener {
 
         int level = plugin.progress().getSummonerLevel(owner.getUniqueId());
 
-        ensureSkillItem(owner, SummonType.WOLF.skillId(), plugin.kit().createSummonerWolvesItem(), true);
+        ensureSkillItem(owner, SummonType.WOLF.skillId(), plugin.kit().createSummonerWolvesItem(),
+                plugin.kit().isSkillUnlockedForLevel(KitManager.Kit.SUMMONER, SummonType.WOLF.skillId(), level));
         ensureSkillItem(owner, SummonType.PHANTOM.skillId(), plugin.kit().createSummonerPhantomItem(),
-                level >= SummonType.PHANTOM.unlockLevel());
+                plugin.kit().isSkillUnlockedForLevel(KitManager.Kit.SUMMONER, SummonType.PHANTOM.skillId(), level));
         ensureSkillItem(owner, SummonType.GOLEM.skillId(), plugin.kit().createSummonerGolemItem(),
-                level >= SummonType.GOLEM.unlockLevel());
+                plugin.kit().isSkillUnlockedForLevel(KitManager.Kit.SUMMONER, SummonType.GOLEM.skillId(), level));
         ensureSkillItem(owner, SummonType.VEX.skillId(), plugin.kit().createSummonerVexItem(),
-                level >= SummonType.VEX.unlockLevel());
+                plugin.kit().isSkillUnlockedForLevel(KitManager.Kit.SUMMONER, SummonType.VEX.skillId(), level));
+        ensureSkillItem(owner, "summoner_focus", plugin.kit().createSummonerFocusItem(),
+                plugin.kit().isSkillUnlockedForLevel(KitManager.Kit.SUMMONER, "summoner_focus", level));
+        ensureSkillItem(owner, "summoner_regroup", plugin.kit().createSummonerRegroupItem(),
+                plugin.kit().isSkillUnlockedForLevel(KitManager.Kit.SUMMONER, "summoner_regroup", level));
+        ensureSkillItem(owner, "summoner_sacrifice", plugin.kit().createSummonerSacrificeItem(),
+                plugin.kit().isSkillUnlockedForLevel(KitManager.Kit.SUMMONER, "summoner_sacrifice", level));
     }
 
     private void ensureSkillItem(Player owner, String skillId, ItemStack item, boolean shouldHave) {
@@ -344,6 +394,282 @@ public class SummonerKitManager implements Listener {
         removeSkillItem(owner, SummonType.PHANTOM.skillId());
         removeSkillItem(owner, SummonType.GOLEM.skillId());
         removeSkillItem(owner, SummonType.VEX.skillId());
+        removeSkillItem(owner, "summoner_focus");
+        removeSkillItem(owner, "summoner_regroup");
+        removeSkillItem(owner, "summoner_sacrifice");
+    }
+
+    public String getFocusError(Player owner, double range) {
+        if (!enabled)
+            return "§cКит Призыватель временно отключён.";
+        if (owner == null || !owner.isOnline())
+            return "§cИгрок не в сети.";
+        if (plugin.kit().getKit(owner.getUniqueId()) != KitManager.Kit.SUMMONER)
+            return "§cЭтот навык доступен только киту Призыватель.";
+
+        if (getActiveSummons(owner.getUniqueId()).isEmpty())
+            return "§cУ тебя нет активных призывов для команды фокуса.";
+
+        LivingEntity target = findFocusTarget(owner, range);
+        if (target == null)
+            return "§cНет подходящей цели перед тобой.";
+
+        return null;
+    }
+
+    public boolean focusTarget(Player owner, double range, int focusSeconds) {
+        String error = getFocusError(owner, range);
+        if (error != null) {
+            if (owner != null)
+                owner.sendMessage(error);
+            return false;
+        }
+
+        if (owner == null)
+            return false;
+
+        UUID ownerId = owner.getUniqueId();
+        LivingEntity target = findFocusTarget(owner, range);
+        if (target == null)
+            return false;
+
+        List<Mob> summons = getActiveSummons(ownerId);
+        if (summons.isEmpty()) {
+            owner.sendMessage("§cУ тебя нет активных призывов для команды фокуса.");
+            return false;
+        }
+
+        int commanded = 0;
+        for (Mob summon : summons) {
+            if (summon == null || summon.isDead() || !summon.isValid())
+                continue;
+            summon.setTarget(target);
+            commanded++;
+        }
+
+        if (commanded <= 0)
+            return false;
+
+        int safeSeconds = Math.max(1, focusSeconds);
+        ownerForcedTarget.put(ownerId, target.getUniqueId());
+        ownerForcedTargetUntil.put(ownerId, System.currentTimeMillis() + safeSeconds * 1000L);
+
+        Location center = owner.getLocation().clone().add(0, 1.0, 0);
+        owner.getWorld().spawnParticle(Particle.ENCHANT, center, 24, 0.35, 0.45, 0.35, 0.08);
+        owner.getWorld().spawnParticle(Particle.END_ROD, center, 14, 0.22, 0.30, 0.22, 0.02);
+        owner.getWorld().playSound(center, Sound.ENTITY_EVOKER_CAST_SPELL, 0.65f, 1.35f);
+        owner.sendActionBar(net.kyori.adventure.text.Component.text("Фокус: " + commanded + " призывов"));
+        return true;
+    }
+
+    public String getRegroupError(Player owner) {
+        if (!enabled)
+            return "§cКит Призыватель временно отключён.";
+        if (owner == null || !owner.isOnline())
+            return "§cИгрок не в сети.";
+        if (plugin.kit().getKit(owner.getUniqueId()) != KitManager.Kit.SUMMONER)
+            return "§cЭтот навык доступен только киту Призыватель.";
+
+        if (getActiveSummons(owner.getUniqueId()).isEmpty())
+            return "§cУ тебя нет активных призывов для перегруппировки.";
+
+        return null;
+    }
+
+    public boolean regroupSummons(Player owner, int shieldSeconds, int shieldAmplifier) {
+        String error = getRegroupError(owner);
+        if (error != null) {
+            if (owner != null)
+                owner.sendMessage(error);
+            return false;
+        }
+
+        if (owner == null)
+            return false;
+
+        UUID ownerId = owner.getUniqueId();
+        List<Mob> summons = getActiveSummons(ownerId);
+        if (summons.isEmpty())
+            return false;
+
+        World world = owner.getWorld();
+        if (world == null)
+            return false;
+
+        Location center = owner.getLocation().clone();
+        int durationTicks = Math.max(20, shieldSeconds * 20);
+        int amplifier = Math.max(0, shieldAmplifier);
+
+        int moved = 0;
+        int affected = 0;
+        int total = Math.max(1, summons.size());
+
+        for (int i = 0; i < summons.size(); i++) {
+            Mob summon = summons.get(i);
+            if (summon == null || summon.isDead() || !summon.isValid())
+                continue;
+
+            double angle = (Math.PI * 2.0 * i) / total;
+            Location regroupPoint = center.clone().add(Math.cos(angle) * 1.8, 0.15, Math.sin(angle) * 1.8);
+
+            if (!summon.getWorld().getUID().equals(world.getUID())
+                    || summon.getLocation().distanceSquared(center) > (16.0 * 16.0)) {
+                summon.teleport(regroupPoint);
+                moved++;
+            }
+
+            summon.setTarget(null);
+            summon.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, durationTicks, amplifier,
+                    true, false, true));
+
+            Location at = summon.getLocation().clone().add(0, 0.9, 0);
+            world.spawnParticle(Particle.ENCHANT, at, 12, 0.22, 0.28, 0.22, 0.06);
+            world.spawnParticle(Particle.TOTEM_OF_UNDYING, at, 5, 0.14, 0.22, 0.14, 0.01);
+            affected++;
+        }
+
+        if (affected <= 0)
+            return false;
+
+        Location pulse = center.clone().add(0, 1.0, 0);
+        world.spawnParticle(Particle.END_ROD, pulse, 20, 0.35, 0.35, 0.35, 0.02);
+        world.spawnParticle(Particle.ENCHANT, pulse, 26, 0.45, 0.50, 0.45, 0.08);
+        world.playSound(pulse, Sound.ENTITY_ILLUSIONER_CAST_SPELL, 0.85f, 1.25f);
+        world.playSound(pulse, Sound.BLOCK_BEACON_ACTIVATE, 0.65f, 1.6f);
+
+        owner.sendActionBar(net.kyori.adventure.text.Component.text(
+                "Перегруппировка: " + affected + " призывов" + (moved > 0 ? " (подтянуто " + moved + ")" : "")));
+        return true;
+    }
+
+    public String getSacrificeError(Player owner) {
+        if (!enabled)
+            return "§cКит Призыватель временно отключён.";
+        if (owner == null || !owner.isOnline())
+            return "§cИгрок не в сети.";
+        if (plugin.kit().getKit(owner.getUniqueId()) != KitManager.Kit.SUMMONER)
+            return "§cЭтот навык доступен только киту Призыватель.";
+
+        List<Mob> summons = getActiveSummons(owner.getUniqueId());
+        if (summons.size() < 2)
+            return "§cНужно минимум 2 активных призыва для жертвенного импульса.";
+
+        return null;
+    }
+
+    public boolean sacrificialImpulse(Player owner,
+            int speedSeconds,
+            int speedAmplifier,
+            double damageBonusMultiplier,
+            int damageBonusSeconds) {
+        String error = getSacrificeError(owner);
+        if (error != null) {
+            if (owner != null)
+                owner.sendMessage(error);
+            return false;
+        }
+
+        if (owner == null)
+            return false;
+
+        UUID ownerId = owner.getUniqueId();
+        List<Mob> summons = getActiveSummons(ownerId);
+        if (summons.size() < 2)
+            return false;
+
+        Mob victim = pickSacrificeVictim(summons, owner.getLocation());
+        if (victim == null)
+            return false;
+
+        World world = owner.getWorld();
+        if (world == null)
+            return false;
+
+        Location burst = victim.getLocation().clone().add(0, 0.8, 0);
+        UUID victimId = victim.getUniqueId();
+        victim.remove();
+        cleanupSummonRuntime(victimId, ownerId);
+
+        List<Mob> buffed = getActiveSummons(ownerId);
+        if (buffed.isEmpty())
+            return false;
+
+        int speedTicks = Math.max(20, speedSeconds * 20);
+        int speedAmp = Math.max(0, speedAmplifier);
+        int boosted = 0;
+
+        for (Mob summon : buffed) {
+            if (summon == null || summon.isDead() || !summon.isValid())
+                continue;
+
+            summon.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, speedTicks, speedAmp,
+                    true, false, true));
+
+            Location at = summon.getLocation().clone().add(0, 0.9, 0);
+            world.spawnParticle(Particle.CRIT, at, 10, 0.20, 0.22, 0.20, 0.12);
+            world.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 6, 0.16, 0.24, 0.16, 0.01);
+            boosted++;
+        }
+
+        if (boosted <= 0)
+            return false;
+
+        double damageBonus = Math.max(0.0, damageBonusMultiplier);
+        int safeDamageBonusSeconds = Math.max(0, damageBonusSeconds);
+        if (damageBonus > 0.0 && safeDamageBonusSeconds > 0) {
+            ownerSacrificeDamageBonusMultiplier.put(ownerId, damageBonus);
+            ownerSacrificeDamageBonusUntil.put(ownerId,
+                    System.currentTimeMillis() + (safeDamageBonusSeconds * 1000L));
+        } else {
+            ownerSacrificeDamageBonusMultiplier.remove(ownerId);
+            ownerSacrificeDamageBonusUntil.remove(ownerId);
+        }
+
+        world.spawnParticle(Particle.EXPLOSION, burst, 1, 0.0, 0.0, 0.0, 0.0);
+        world.spawnParticle(Particle.CRIT, burst, 26, 0.40, 0.35, 0.40, 0.28);
+        world.spawnParticle(Particle.SOUL, burst, 18, 0.32, 0.28, 0.32, 0.02);
+        world.playSound(burst, Sound.ENTITY_WITHER_HURT, 0.95f, 1.35f);
+        world.playSound(owner.getLocation(), Sound.ENTITY_EVOKER_CAST_SPELL, 0.7f, 0.8f);
+
+        owner.sendActionBar(net.kyori.adventure.text.Component.text(
+                "Жертвенный импульс: усилено " + boosted + " призывов"));
+        return true;
+    }
+
+    private Mob pickSacrificeVictim(List<Mob> summons, Location ownerLoc) {
+        Mob victim = null;
+        double bestHealth = Double.MAX_VALUE;
+        double bestDistance = -1.0;
+
+        for (Mob summon : summons) {
+            if (summon == null || summon.isDead() || !summon.isValid())
+                continue;
+
+            double hp = Math.max(0.0, summon.getHealth());
+            double dist = ownerLoc == null ? 0.0 : summon.getLocation().distanceSquared(ownerLoc);
+
+            if (hp < bestHealth || (Math.abs(hp - bestHealth) < 0.001 && dist > bestDistance)) {
+                bestHealth = hp;
+                bestDistance = dist;
+                victim = summon;
+            }
+        }
+
+        return victim;
+    }
+
+    private double getActiveSacrificeDamageBonus(UUID ownerId) {
+        long until = ownerSacrificeDamageBonusUntil.getOrDefault(ownerId, 0L);
+        if (until <= 0L)
+            return 0.0;
+
+        if (System.currentTimeMillis() >= until) {
+            ownerSacrificeDamageBonusUntil.remove(ownerId);
+            ownerSacrificeDamageBonusMultiplier.remove(ownerId);
+            return 0.0;
+        }
+
+        return Math.max(0.0, ownerSacrificeDamageBonusMultiplier.getOrDefault(ownerId, 0.0));
     }
 
     public String getSummonError(Player owner, SummonType type) {
@@ -490,16 +816,27 @@ public class SummonerKitManager implements Listener {
             List<Mob> summons = getActiveSummons(ownerId);
             if (summons.isEmpty()) {
                 ownerToSummons.remove(ownerId);
+                ownerForcedTarget.remove(ownerId);
+                ownerForcedTargetUntil.remove(ownerId);
+                ownerSacrificeDamageBonusUntil.remove(ownerId);
+                ownerSacrificeDamageBonusMultiplier.remove(ownerId);
                 continue;
             }
+
+            LivingEntity forcedTarget = resolveForcedTarget(ownerId, now);
 
             tickOwnerUpkeep(owner, ownerId, summons);
             if (summons.isEmpty()) {
                 ownerToSummons.remove(ownerId);
+                ownerForcedTarget.remove(ownerId);
+                ownerForcedTargetUntil.remove(ownerId);
+                ownerSacrificeDamageBonusUntil.remove(ownerId);
+                ownerSacrificeDamageBonusMultiplier.remove(ownerId);
                 continue;
             }
 
             for (Mob summon : summons) {
+                UUID summonId = summon.getUniqueId();
                 long expireAt = summonExpireAt.getOrDefault(summon.getUniqueId(), 0L);
                 if (expireAt > 0L && now >= expireAt) {
                     summon.remove();
@@ -507,15 +844,54 @@ public class SummonerKitManager implements Listener {
                     continue;
                 }
 
+                if (isSummonStuck(summon, owner, now)) {
+                    unstickSummon(summon, owner);
+                    summon.setTarget(null);
+                    summonNextRetargetAt.put(summonId, now + 250L);
+                    continue;
+                }
+
+                if (forcedTarget != null) {
+                    if (summon.getTarget() == null
+                            || !summon.getTarget().getUniqueId().equals(forcedTarget.getUniqueId())) {
+                        summon.setTarget(forcedTarget);
+                    }
+                    summonNextRetargetAt.put(summonId, now + aiRetargetIntervalMs);
+                    continue;
+                }
+
                 LivingEntity currentTarget = summon.getTarget();
-                if (!isEnemy(currentTarget, ownerId)) {
-                    LivingEntity enemy = findNearestEnemy(summon.getLocation(), targetSearchRadius, ownerId);
+                if (shouldDropCurrentTarget(summon, currentTarget, ownerId)) {
+                    summon.setTarget(null);
+                    currentTarget = null;
+                }
+
+                if (currentTarget == null) {
+                    LivingEntity enemy = findPriorityEnemy(summon, owner, ownerId);
                     if (enemy != null) {
                         summon.setTarget(enemy);
+                        summonNextRetargetAt.put(summonId, now + aiRetargetIntervalMs);
                     } else {
                         followOwnerWhenIdle(summon, owner);
                     }
+                    continue;
                 }
+
+                long nextRetargetAt = summonNextRetargetAt.getOrDefault(summonId, 0L);
+                if (now < nextRetargetAt)
+                    continue;
+
+                LivingEntity betterEnemy = findPriorityEnemy(summon, owner, ownerId);
+                if (betterEnemy != null && !betterEnemy.getUniqueId().equals(currentTarget.getUniqueId())) {
+                    double currentDist = safeDistanceSquared(summon.getLocation(), currentTarget.getLocation(),
+                            Double.MAX_VALUE);
+                    double betterDist = safeDistanceSquared(summon.getLocation(), betterEnemy.getLocation(),
+                            Double.MAX_VALUE);
+                    if (betterDist + 6.0 < currentDist) {
+                        summon.setTarget(betterEnemy);
+                    }
+                }
+                summonNextRetargetAt.put(summonId, now + aiRetargetIntervalMs);
             }
         }
 
@@ -541,6 +917,10 @@ public class SummonerKitManager implements Listener {
 
     private void removeOwnerSummons(UUID ownerId) {
         Set<UUID> ids = ownerToSummons.remove(ownerId);
+        ownerForcedTarget.remove(ownerId);
+        ownerForcedTargetUntil.remove(ownerId);
+        ownerSacrificeDamageBonusUntil.remove(ownerId);
+        ownerSacrificeDamageBonusMultiplier.remove(ownerId);
         if (ids == null) {
             ownerUpkeepAccumulator.remove(ownerId);
             ownerUpkeepWarnUntil.remove(ownerId);
@@ -561,14 +941,27 @@ public class SummonerKitManager implements Listener {
 
     private void cleanupSummonRuntime(UUID entityId, UUID ownerId) {
         summonExpireAt.remove(entityId);
+        clearSummonAiRuntime(entityId);
 
         Set<UUID> ownerSet = ownerToSummons.get(ownerId);
         if (ownerSet != null) {
             ownerSet.remove(entityId);
             if (ownerSet.isEmpty()) {
                 ownerToSummons.remove(ownerId);
+                ownerForcedTarget.remove(ownerId);
+                ownerForcedTargetUntil.remove(ownerId);
+                ownerUpkeepAccumulator.remove(ownerId);
+                ownerUpkeepWarnUntil.remove(ownerId);
+                ownerSacrificeDamageBonusUntil.remove(ownerId);
+                ownerSacrificeDamageBonusMultiplier.remove(ownerId);
             }
         }
+    }
+
+    private void clearSummonAiRuntime(UUID summonId) {
+        summonNextRetargetAt.remove(summonId);
+        summonLastKnownLocation.remove(summonId);
+        summonLastProgressAt.remove(summonId);
     }
 
     private List<Mob> getActiveSummons(UUID ownerId) {
@@ -583,6 +976,7 @@ public class SummonerKitManager implements Listener {
             if (!(entity instanceof Mob summon) || summon.isDead() || !summon.isValid() || !isManagedSummon(entity)) {
                 ids.remove(id);
                 summonExpireAt.remove(id);
+                clearSummonAiRuntime(id);
                 continue;
             }
 
@@ -590,6 +984,7 @@ public class SummonerKitManager implements Listener {
             if (owner == null || !owner.equals(ownerId)) {
                 ids.remove(id);
                 summonExpireAt.remove(id);
+                clearSummonAiRuntime(id);
                 continue;
             }
 
@@ -1056,6 +1451,70 @@ public class SummonerKitManager implements Listener {
         return center.clone().add(0, 1.0, 0);
     }
 
+    private LivingEntity findFocusTarget(Player owner, double range) {
+        if (owner == null)
+            return null;
+
+        Location eye = owner.getEyeLocation();
+        Vector direction = eye.getDirection().normalize();
+
+        LivingEntity best = null;
+        double bestScore = Double.MAX_VALUE;
+
+        for (Entity entity : owner.getWorld().getNearbyEntities(eye, range, range, range)) {
+            if (!(entity instanceof LivingEntity living))
+                continue;
+            if (!isEnemy(living, owner.getUniqueId()))
+                continue;
+
+            Location center = living.getLocation().clone().add(0, Math.max(0.6, living.getHeight() * 0.5), 0);
+            Vector to = center.toVector().subtract(eye.toVector());
+            double dist = to.length();
+            if (dist > range || dist < 0.001)
+                continue;
+
+            double dot = direction.dot(to.clone().normalize());
+            if (dot < 0.20)
+                continue;
+
+            if (!owner.hasLineOfSight(living))
+                continue;
+
+            double score = dist - (dot * 2.6);
+            if (score < bestScore) {
+                bestScore = score;
+                best = living;
+            }
+        }
+
+        return best;
+    }
+
+    private LivingEntity resolveForcedTarget(UUID ownerId, long nowMs) {
+        UUID targetId = ownerForcedTarget.get(ownerId);
+        if (targetId == null)
+            return null;
+
+        long until = ownerForcedTargetUntil.getOrDefault(ownerId, 0L);
+        if (nowMs >= until) {
+            ownerForcedTarget.remove(ownerId);
+            ownerForcedTargetUntil.remove(ownerId);
+            return null;
+        }
+
+        Entity targetEntity = Bukkit.getEntity(targetId);
+        if (!(targetEntity instanceof LivingEntity living)
+                || !living.isValid()
+                || living.isDead()
+                || !isEnemy(living, ownerId)) {
+            ownerForcedTarget.remove(ownerId);
+            ownerForcedTargetUntil.remove(ownerId);
+            return null;
+        }
+
+        return living;
+    }
+
     private LivingEntity findNearestEnemy(Location center, double radius, UUID ownerId) {
         if (center == null || center.getWorld() == null)
             return null;
@@ -1077,6 +1536,114 @@ public class SummonerKitManager implements Listener {
         }
 
         return best;
+    }
+
+    private LivingEntity findPriorityEnemy(Mob summon, Player owner, UUID ownerId) {
+        if (summon == null)
+            return null;
+
+        LivingEntity aroundSummon = findNearestEnemy(summon.getLocation(), targetSearchRadius, ownerId);
+        if (owner == null || !owner.isOnline())
+            return aroundSummon;
+
+        LivingEntity aroundOwner = findNearestEnemy(owner.getLocation(), Math.max(12.0, targetSearchRadius * 0.8),
+                ownerId);
+        if (aroundOwner == null)
+            return aroundSummon;
+        if (aroundSummon == null)
+            return aroundOwner;
+
+        double ownerDist = safeDistanceSquared(summon.getLocation(), aroundOwner.getLocation(), Double.MAX_VALUE);
+        double summonDist = safeDistanceSquared(summon.getLocation(), aroundSummon.getLocation(), Double.MAX_VALUE);
+        return (ownerDist + 2.0 < summonDist) ? aroundOwner : aroundSummon;
+    }
+
+    private boolean shouldDropCurrentTarget(Mob summon, LivingEntity target, UUID ownerId) {
+        if (!isEnemy(target, ownerId))
+            return true;
+
+        if (summon == null || target == null)
+            return true;
+        if (summon.getWorld() == null || target.getWorld() == null)
+            return true;
+        if (!summon.getWorld().getUID().equals(target.getWorld().getUID()))
+            return true;
+
+        double maxDistanceSq = aiTargetDropDistance * aiTargetDropDistance;
+        return summon.getLocation().distanceSquared(target.getLocation()) > maxDistanceSq;
+    }
+
+    private boolean isSummonStuck(Mob summon, Player owner, long nowMs) {
+        if (summon == null || owner == null)
+            return false;
+
+        UUID summonId = summon.getUniqueId();
+        Location current = summon.getLocation();
+        Location previous = summonLastKnownLocation.put(summonId, current.clone());
+
+        if (previous == null || previous.getWorld() == null || current.getWorld() == null
+                || !previous.getWorld().getUID().equals(current.getWorld().getUID())) {
+            summonLastProgressAt.put(summonId, nowMs);
+            return false;
+        }
+
+        double movedSq = current.distanceSquared(previous);
+        if (movedSq >= (0.22 * 0.22)) {
+            summonLastProgressAt.put(summonId, nowMs);
+            return false;
+        }
+
+        LivingEntity target = summon.getTarget();
+        if (target != null && isEnemy(target, owner.getUniqueId())) {
+            double toTargetSq = safeDistanceSquared(current, target.getLocation(), Double.MAX_VALUE);
+            if (toTargetSq <= 3.5 * 3.5) {
+                return false;
+            }
+        }
+
+        if (owner.getWorld() != null && current.getWorld() != null
+                && owner.getWorld().getUID().equals(current.getWorld().getUID())) {
+            double toOwnerSq = safeDistanceSquared(current, owner.getLocation(), 0.0);
+            if (toOwnerSq < aiStuckMinDistanceToOwner * aiStuckMinDistanceToOwner) {
+                return false;
+            }
+        }
+
+        long lastProgress = summonLastProgressAt.getOrDefault(summonId, nowMs);
+        return nowMs - lastProgress >= aiStuckTimeoutMs;
+    }
+
+    private void unstickSummon(Mob summon, Player owner) {
+        if (summon == null || owner == null || !owner.isOnline())
+            return;
+
+        Location ownerLoc = owner.getLocation().clone().add(0, 0.25, 0);
+        if (summon.getWorld() == null || owner.getWorld() == null
+                || !summon.getWorld().getUID().equals(owner.getWorld().getUID())) {
+            summon.teleport(ownerLoc.clone().add((rng.nextDouble() - 0.5) * 2.2, 0.0, (rng.nextDouble() - 0.5) * 2.2));
+            return;
+        }
+
+        double distSq = safeDistanceSquared(summon.getLocation(), ownerLoc, 0.0);
+        if (distSq > 12.0 * 12.0) {
+            summon.teleport(ownerLoc.clone().add((rng.nextDouble() - 0.5) * 2.4, 0.0, (rng.nextDouble() - 0.5) * 2.4));
+        } else {
+            Vector toOwner = ownerLoc.toVector().subtract(summon.getLocation().toVector());
+            if (toOwner.lengthSquared() > 0.0001) {
+                summon.setVelocity(toOwner.normalize().multiply(0.55).setY(0.15));
+            }
+        }
+
+        Location fx = summon.getLocation().clone().add(0, 0.9, 0);
+        summon.getWorld().spawnParticle(Particle.END_ROD, fx, 8, 0.16, 0.22, 0.16, 0.02);
+    }
+
+    private double safeDistanceSquared(Location a, Location b, double fallback) {
+        if (a == null || b == null || a.getWorld() == null || b.getWorld() == null)
+            return fallback;
+        if (!a.getWorld().getUID().equals(b.getWorld().getUID()))
+            return fallback;
+        return a.distanceSquared(b);
     }
 
     private void followOwnerWhenIdle(Mob summon, Player owner) {
@@ -1270,6 +1837,13 @@ public class SummonerKitManager implements Listener {
             return;
         }
 
+        double bonus = getActiveSacrificeDamageBonus(ownerId);
+        if (bonus > 0.0) {
+            e.setDamage(e.getDamage() * (1.0 + bonus));
+            Location at = damaged.getLocation().clone().add(0, Math.max(0.6, damaged.getHeight() * 0.5), 0);
+            damaged.getWorld().spawnParticle(Particle.CRIT, at, 5, 0.16, 0.16, 0.16, 0.12);
+        }
+
         if (damaged instanceof Zombie zombie) {
             lastHitOwnerByZombie.put(zombie.getUniqueId(), ownerId);
             lastHitAtByZombie.put(zombie.getUniqueId(), System.currentTimeMillis());
@@ -1279,6 +1853,15 @@ public class SummonerKitManager implements Listener {
     @EventHandler
     public void onEntityDeath(EntityDeathEvent e) {
         Entity dead = e.getEntity();
+
+        UUID deadId = dead.getUniqueId();
+        for (UUID ownerId : new ArrayList<>(ownerForcedTarget.keySet())) {
+            UUID focused = ownerForcedTarget.get(ownerId);
+            if (focused != null && focused.equals(deadId)) {
+                ownerForcedTarget.remove(ownerId);
+                ownerForcedTargetUntil.remove(ownerId);
+            }
+        }
 
         if (isManagedSummon(dead)) {
             UUID ownerId = readOwnerId(dead);

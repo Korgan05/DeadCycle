@@ -11,6 +11,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @SuppressWarnings("deprecation")
@@ -18,6 +20,17 @@ public class ProgressManager {
 
     private final DeadCyclePlugin plugin;
     private final PlayerDataStore store;
+    private final Map<UUID, PlayerProgressSnapshot> pendingPlayerProgress = new HashMap<>();
+
+    private static final class PlayerProgressSnapshot {
+        final int level;
+        final int exp;
+
+        private PlayerProgressSnapshot(int level, int exp) {
+            this.level = Math.max(1, level);
+            this.exp = Math.max(0, exp);
+        }
+    }
 
     public ProgressManager(DeadCyclePlugin plugin, PlayerDataStore store) {
         this.plugin = plugin;
@@ -93,6 +106,21 @@ public class ProgressManager {
 
         store.setInt(uuid, "player.level", lvl);
         store.setInt(uuid, "player.exp", exp);
+    }
+
+    public void preparePlayerProgressForReset() {
+        pendingPlayerProgress.clear();
+
+        for (UUID uuid : store.getKnownPlayerIds()) {
+            int lvl = store.getInt(uuid, "player.level", 1);
+            int exp = store.getInt(uuid, "player.exp", 0);
+            pendingPlayerProgress.put(uuid, new PlayerProgressSnapshot(lvl, exp));
+        }
+
+        for (Player p : org.bukkit.Bukkit.getOnlinePlayers()) {
+            UUID uuid = p.getUniqueId();
+            pendingPlayerProgress.put(uuid, new PlayerProgressSnapshot(getPlayerLevel(uuid), getPlayerExp(uuid)));
+        }
     }
 
     // =========================
@@ -433,6 +461,191 @@ public class ProgressManager {
     }
 
     // =========================
+    // PING
+    // =========================
+    public int getPingLevel(UUID uuid) {
+        return store.getInt(uuid, "ping.level", 1);
+    }
+
+    public int getPingExp(UUID uuid) {
+        return store.getInt(uuid, "ping.exp", 0);
+    }
+
+    public int getPingNeedExp(UUID uuid) {
+        int lvl = getPingLevel(uuid);
+        return calcNeed(lvl, "kit_xp.ping.level_xp_base", "kit_xp.ping.level_xp_add_per_level");
+    }
+
+    public void addPingExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getPingExp(uuid) + add;
+        int lvl = getPingLevel(uuid);
+        int need = getPingNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.ping.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.ping.level_xp_base", "kit_xp.ping.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Пинг повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "ping.level", lvl);
+        store.setInt(uuid, "ping.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
+    // HARPOONER
+    // =========================
+    public int getHarpoonerLevel(UUID uuid) {
+        return store.getInt(uuid, "harpooner.level", 1);
+    }
+
+    public int getHarpoonerExp(UUID uuid) {
+        return store.getInt(uuid, "harpooner.exp", 0);
+    }
+
+    public int getHarpoonerNeedExp(UUID uuid) {
+        int lvl = getHarpoonerLevel(uuid);
+        return calcNeed(lvl, "kit_xp.harpooner.level_xp_base", "kit_xp.harpooner.level_xp_add_per_level");
+    }
+
+    public void addHarpoonerExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getHarpoonerExp(uuid) + add;
+        int lvl = getHarpoonerLevel(uuid);
+        int need = getHarpoonerNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.harpooner.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.harpooner.level_xp_base", "kit_xp.harpooner.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Гарпунер повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "harpooner.level", lvl);
+        store.setInt(uuid, "harpooner.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
+    // CYBORG
+    // =========================
+    public int getCyborgLevel(UUID uuid) {
+        return store.getInt(uuid, "cyborg.level", 1);
+    }
+
+    public int getCyborgExp(UUID uuid) {
+        return store.getInt(uuid, "cyborg.exp", 0);
+    }
+
+    public int getCyborgNeedExp(UUID uuid) {
+        int lvl = getCyborgLevel(uuid);
+        return calcNeed(lvl, "kit_xp.cyborg.level_xp_base", "kit_xp.cyborg.level_xp_add_per_level");
+    }
+
+    public void addCyborgExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getCyborgExp(uuid) + add;
+        int lvl = getCyborgLevel(uuid);
+        int need = getCyborgNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.cyborg.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.cyborg.level_xp_base", "kit_xp.cyborg.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Киборг повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "cyborg.level", lvl);
+        store.setInt(uuid, "cyborg.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
+    // MEDIC
+    // =========================
+    public int getMedicLevel(UUID uuid) {
+        return store.getInt(uuid, "medic.level", 1);
+    }
+
+    public int getMedicExp(UUID uuid) {
+        return store.getInt(uuid, "medic.exp", 0);
+    }
+
+    public int getMedicNeedExp(UUID uuid) {
+        int lvl = getMedicLevel(uuid);
+        return calcNeed(lvl, "kit_xp.medic.level_xp_base", "kit_xp.medic.level_xp_add_per_level");
+    }
+
+    public void addMedicExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getMedicExp(uuid) + add;
+        int lvl = getMedicLevel(uuid);
+        int need = getMedicNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.medic.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.medic.level_xp_base", "kit_xp.medic.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Медик повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "medic.level", lvl);
+        store.setInt(uuid, "medic.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
+    // EXORCIST
+    // =========================
+    public int getExorcistLevel(UUID uuid) {
+        return store.getInt(uuid, "exorcist.level", 1);
+    }
+
+    public int getExorcistExp(UUID uuid) {
+        return store.getInt(uuid, "exorcist.exp", 0);
+    }
+
+    public int getExorcistNeedExp(UUID uuid) {
+        int lvl = getExorcistLevel(uuid);
+        return calcNeed(lvl, "kit_xp.exorcist.level_xp_base", "kit_xp.exorcist.level_xp_add_per_level");
+    }
+
+    public void addExorcistExp(Player p, int add) {
+        UUID uuid = p.getUniqueId();
+        int exp = getExorcistExp(uuid) + add;
+        int lvl = getExorcistLevel(uuid);
+        int need = getExorcistNeedExp(uuid);
+
+        int max = plugin.getConfig().getInt("kit_xp.exorcist.max_level", 10);
+
+        while (exp >= need && lvl < max) {
+            exp -= need;
+            lvl++;
+            need = calcNeed(lvl, "kit_xp.exorcist.level_xp_base", "kit_xp.exorcist.level_xp_add_per_level");
+            p.sendMessage(ChatColor.GREEN + "Экзорцист повысил уровень! Теперь: " + ChatColor.WHITE + lvl);
+        }
+
+        store.setInt(uuid, "exorcist.level", lvl);
+        store.setInt(uuid, "exorcist.exp", exp);
+
+        applyKitEffects(p);
+    }
+
+    // =========================
     // GENERIC KIT access (для scoreboard/GUI)
     // =========================
 
@@ -450,6 +663,11 @@ public class ProgressManager {
             case DUELIST -> getDuelistLevel(uuid);
             case CLONER -> getClonerLevel(uuid);
             case SUMMONER -> getSummonerLevel(uuid);
+            case PING -> getPingLevel(uuid);
+            case HARPOONER -> getHarpoonerLevel(uuid);
+            case CYBORG -> getCyborgLevel(uuid);
+            case MEDIC -> getMedicLevel(uuid);
+            case EXORCIST -> getExorcistLevel(uuid);
             default -> 0;
         };
     }
@@ -467,6 +685,11 @@ public class ProgressManager {
             case DUELIST -> getDuelistExp(uuid);
             case CLONER -> getClonerExp(uuid);
             case SUMMONER -> getSummonerExp(uuid);
+            case PING -> getPingExp(uuid);
+            case HARPOONER -> getHarpoonerExp(uuid);
+            case CYBORG -> getCyborgExp(uuid);
+            case MEDIC -> getMedicExp(uuid);
+            case EXORCIST -> getExorcistExp(uuid);
             default -> 0;
         };
     }
@@ -484,6 +707,11 @@ public class ProgressManager {
             case DUELIST -> getDuelistNeedExp(uuid);
             case CLONER -> getClonerNeedExp(uuid);
             case SUMMONER -> getSummonerNeedExp(uuid);
+            case PING -> getPingNeedExp(uuid);
+            case HARPOONER -> getHarpoonerNeedExp(uuid);
+            case CYBORG -> getCyborgNeedExp(uuid);
+            case MEDIC -> getMedicNeedExp(uuid);
+            case EXORCIST -> getExorcistNeedExp(uuid);
             default -> 0;
         };
     }
@@ -515,14 +743,17 @@ public class ProgressManager {
             case DUELIST -> store.setInt(uuid, "duelist.level", lvl);
             case CLONER -> store.setInt(uuid, "cloner.level", lvl);
             case SUMMONER -> store.setInt(uuid, "summoner.level", lvl);
+            case PING -> store.setInt(uuid, "ping.level", lvl);
+            case HARPOONER -> store.setInt(uuid, "harpooner.level", lvl);
+            case CYBORG -> store.setInt(uuid, "cyborg.level", lvl);
+            case MEDIC -> store.setInt(uuid, "medic.level", lvl);
+            case EXORCIST -> store.setInt(uuid, "exorcist.level", lvl);
         }
         store.save();
 
-        if (kit == KitManager.Kit.SUMMONER && plugin.summonerKit() != null) {
-            Player online = org.bukkit.Bukkit.getPlayer(uuid);
-            if (online != null && online.isOnline()) {
-                plugin.summonerKit().syncSkillItems(online);
-            }
+        Player online = org.bukkit.Bukkit.getPlayer(uuid);
+        if (online != null && online.isOnline()) {
+            applyKitEffects(online);
         }
     }// =========================
      // helpers
@@ -568,8 +799,10 @@ public class ProgressManager {
         if (kit == KitManager.Kit.FIGHTER) {
             ConfigurationSection sec = plugin.getConfig().getConfigurationSection("kit_buffs.fighter");
             boolean enabled = sec == null || sec.getBoolean("enabled", true);
-            if (!enabled)
+            if (!enabled) {
+                plugin.kit().syncSkillItemsForCurrentKit(p);
                 return;
+            }
 
             int lvl = getFighterLevel(p.getUniqueId());
 
@@ -616,6 +849,8 @@ public class ProgressManager {
                 }
             }
         }
+
+        plugin.kit().syncSkillItemsForCurrentKit(p);
     }
 
     private PotionEffectType strengthType() {
@@ -636,6 +871,13 @@ public class ProgressManager {
      * Вызывается при ресете игры (когда все игроки умирают).
      */
     public void resetAll() {
+        for (Map.Entry<UUID, PlayerProgressSnapshot> entry : pendingPlayerProgress.entrySet()) {
+            UUID uuid = entry.getKey();
+            PlayerProgressSnapshot snapshot = entry.getValue();
+            store.setInt(uuid, "player.level", snapshot.level);
+            store.setInt(uuid, "player.exp", snapshot.exp);
+        }
+
         // Очищаем все данные китов в PlayerDataStore
         // Данные хранятся как: UUID.miner.level, UUID.fighter.exp и т.д.
         // PlayerDataStore.clearAll() уже вызывается в PhaseManager.reset(),
@@ -655,6 +897,11 @@ public class ProgressManager {
             store.setInt(uuid, "duelist.level", 1);
             store.setInt(uuid, "cloner.level", 1);
             store.setInt(uuid, "summoner.level", 1);
+            store.setInt(uuid, "ping.level", 1);
+            store.setInt(uuid, "harpooner.level", 1);
+            store.setInt(uuid, "cyborg.level", 1);
+            store.setInt(uuid, "medic.level", 1);
+            store.setInt(uuid, "exorcist.level", 1);
 
             // Сбрасываем весь опыт до 0
             store.setInt(uuid, "miner.exp", 0);
@@ -666,15 +913,17 @@ public class ProgressManager {
             store.setInt(uuid, "duelist.exp", 0);
             store.setInt(uuid, "cloner.exp", 0);
             store.setInt(uuid, "summoner.exp", 0);
-
-            // Сбрасываем общий уровень игрока
-            store.setInt(uuid, "player.level", 1);
-            store.setInt(uuid, "player.exp", 0);
+            store.setInt(uuid, "ping.exp", 0);
+            store.setInt(uuid, "harpooner.exp", 0);
+            store.setInt(uuid, "cyborg.exp", 0);
+            store.setInt(uuid, "medic.exp", 0);
+            store.setInt(uuid, "exorcist.exp", 0);
 
             // Помечаем что нужно заново выбрать кит
             store.setInt(uuid, "kit.must_choose", 1);
         }
 
+        pendingPlayerProgress.clear();
         store.save();
     }
 }

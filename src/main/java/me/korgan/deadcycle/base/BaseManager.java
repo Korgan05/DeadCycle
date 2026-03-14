@@ -2,6 +2,7 @@ package me.korgan.deadcycle.base;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -60,7 +61,8 @@ public class BaseManager {
     }
 
     public void setBase(Location loc, int radius) {
-        if (loc == null || loc.getWorld() == null) return;
+        if (loc == null || loc.getWorld() == null)
+            return;
 
         this.world = loc.getWorld();
         this.center = loc.clone();
@@ -80,8 +82,10 @@ public class BaseManager {
     }
 
     public boolean isOnBase(Location loc) {
-        if (!isEnabled() || loc == null || loc.getWorld() == null) return false;
-        if (!loc.getWorld().getUID().equals(world.getUID())) return false;
+        if (!isEnabled() || loc == null || loc.getWorld() == null)
+            return false;
+        if (!loc.getWorld().getUID().equals(world.getUID()))
+            return false;
 
         double dx = loc.getX() - center.getX();
         double dz = loc.getZ() - center.getZ();
@@ -89,11 +93,12 @@ public class BaseManager {
     }
 
     public int countOnBase() {
-        if (!isEnabled()) return 0;
+        if (!isEnabled())
+            return 0;
 
         int count = 0;
         for (Player p : Bukkit.getOnlinePlayers()) {
-            if (p.isOnline() && !p.isDead() && isOnBase(p.getLocation())) {
+            if (p.isOnline() && !p.isDead() && p.getGameMode() != GameMode.SPECTATOR && isOnBase(p.getLocation())) {
                 count++;
             }
         }

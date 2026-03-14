@@ -57,6 +57,11 @@ public class BaseScoreboard {
             case DUELIST -> "Ритуалист";
             case CLONER -> "Клонер";
             case SUMMONER -> "Призыватель";
+            case PING -> "Пинг";
+            case HARPOONER -> "Гарпунер";
+            case CYBORG -> "Киборг";
+            case MEDIC -> "Медик";
+            case EXORCIST -> "Экзорцист";
             case null, default -> "-";
         };
         o.getScore("§bКит: §f" + kitName).setScore(line--);

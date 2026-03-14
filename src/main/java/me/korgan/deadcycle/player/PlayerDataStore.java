@@ -37,6 +37,10 @@ public class PlayerDataStore {
         data.set(uuid + "." + path, val);
     }
 
+    public boolean has(UUID uuid, String path) {
+        return data.contains(uuid + "." + path);
+    }
+
     public Set<UUID> getKnownPlayerIds() {
         Set<UUID> ids = new HashSet<>();
         for (String key : data.getKeys(false)) {

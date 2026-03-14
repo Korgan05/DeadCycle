@@ -2,6 +2,7 @@ package me.korgan.deadcycle.zombies;
 
 import me.korgan.deadcycle.DeadCyclePlugin;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -146,7 +147,7 @@ public class ZombieWaveManager {
     private int activeNightDay = 1;
     private double activeNightHp = 16.0;
     private double activeNightDamage = 2.0;
-    private double activeNightFollow = 48.0;
+    private double activeNightFollow = 64.0;
     private double activeNightSpeed = 0.23;
 
     private final Map<ZombieType, TypeProfile> profiles = new EnumMap<>(ZombieType.class);
@@ -202,11 +203,14 @@ public class ZombieWaveManager {
 
         activeNightHp = hpBase + activeNightDay * hpPer;
         activeNightDamage = dmgBase + activeNightDay * dmgPer;
-        activeNightFollow = plugin.getConfig().getDouble("zombies.follow_range", 48.0);
+        activeNightFollow = Math.max(64.0, plugin.getConfig().getDouble("zombies.follow_range", 64.0));
         activeNightSpeed = Math.max(0.10, plugin.getConfig().getDouble("zombies.base_speed", 0.23));
 
         spawnTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            int online = Bukkit.getOnlinePlayers().size();
+            List<Player> activePlayers = new ArrayList<>(Bukkit.getOnlinePlayers());
+            activePlayers.removeIf(p -> !p.isOnline() || p.isDead() || p.getGameMode() == GameMode.SPECTATOR);
+
+            int online = activePlayers.size();
             if (online <= 0)
                 return;
 
@@ -229,9 +233,7 @@ public class ZombieWaveManager {
                 return;
             }
 
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                if (!player.isOnline() || player.isDead())
-                    continue;
+            for (Player player : activePlayers) {
                 if (plugin.bossDuel().isDuelActive() && plugin.bossDuel().isDuelPlayer(player.getUniqueId()))
                     continue;
 

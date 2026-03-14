@@ -1097,6 +1097,34 @@ public class CloneKitManager implements Listener {
         return null;
     }
 
+    private boolean isPlayerDamager(Entity damager) {
+        if (damager instanceof Player)
+            return true;
+        return damager instanceof Projectile projectile && projectile.getShooter() instanceof Player;
+    }
+
+    private boolean isPlayerOwnedCompanionDamager(Entity damager) {
+        if (damager == null)
+            return false;
+
+        Entity source = damager;
+        if (damager instanceof Projectile projectile && projectile.getShooter() instanceof Entity shooter) {
+            source = shooter;
+        }
+
+        if (isClone(source))
+            return true;
+
+        if (plugin.summonerKit() != null) {
+            Byte summonMark = source.getPersistentDataContainer().get(plugin.summonerKit().summonMarkKey(),
+                    PersistentDataType.BYTE);
+            if (summonMark != null && summonMark == (byte) 1)
+                return true;
+        }
+
+        return false;
+    }
+
     private UUID resolveCloneOwnerFromDeathCause(Zombie victim) {
         if (!(victim.getLastDamageCause() instanceof EntityDamageByEntityEvent hitEvent)) {
             return null;
@@ -1167,9 +1195,11 @@ public class CloneKitManager implements Listener {
             }
 
             Entity damager = e.getDamager();
-            if (damager instanceof Player
-                    || (damager instanceof Projectile proj && proj.getShooter() instanceof Player)) {
+            if (isPlayerDamager(damager) || isPlayerOwnedCompanionDamager(damager)) {
                 e.setCancelled(true);
+                if (damaged instanceof Mob cloneVictim) {
+                    cloneVictim.setTarget(null);
+                }
                 return;
             }
 

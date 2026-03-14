@@ -49,7 +49,7 @@ zombies:
   spawn_radius_max: 28
   spawn_y_offset: 2
 
-  follow_range: 48.0
+  follow_range: 64.0
   target_scan_seconds: 2
 
   # Типы зомби для разнообразия волн
@@ -274,6 +274,36 @@ summoner:
       damage: 4.0
       speed: 0.40
 
+  # Улучшенный ИИ призывов: быстрее переключение целей и анти-застревание
+  ai:
+    retarget_interval_ms: 900
+    stuck_timeout_ms: 2500
+    stuck_min_distance_to_owner: 6.0
+    target_drop_distance: 30.0
+
+harpooner:
+  enabled: true
+
+  # Длительность удержания цепью
+  chain_duration_seconds: 5
+  # Максимальная дистанция до разрыва цепи
+  max_chain_distance: 16.0
+
+  # Наказание за резкий рывок цели
+  dash_threshold_distance: 4.8
+  dash_punish_cooldown_ms: 900
+  dash_punish_damage: 3.0
+  dash_slow_seconds: 1
+
+  # Наказание за телепорт цели
+  teleport_punish_damage: 4.0
+  teleport_slow_seconds: 2
+
+  # Наказание за разрыв цепи (выход за max_chain_distance)
+  break_weakness_seconds: 2
+  break_vulnerability_seconds: 2
+  break_vulnerability_bonus: 0.12
+
 base:
   enabled: true
   world: world
@@ -449,6 +479,41 @@ kit_xp:
     level_xp_add_per_level: 44
     max_level: 10
 
+  ping:
+    # Пинг получает XP за прямые убийства
+    exp_per_zombie: 2
+    level_xp_base: 68
+    level_xp_add_per_level: 42
+    max_level: 10
+
+  harpooner:
+    # Гарпунер получает XP за прямые убийства
+    exp_per_zombie: 2
+    level_xp_base: 70
+    level_xp_add_per_level: 44
+    max_level: 10
+
+  cyborg:
+    # Киборг получает XP за прямые убийства
+    exp_per_zombie: 2
+    level_xp_base: 72
+    level_xp_add_per_level: 45
+    max_level: 10
+
+  medic:
+    # Медик получает XP за прямые убийства
+    exp_per_zombie: 2
+    level_xp_base: 70
+    level_xp_add_per_level: 43
+    max_level: 10
+
+  exorcist:
+    # Экзорцист получает XP за прямые убийства
+    exp_per_zombie: 2
+    level_xp_base: 74
+    level_xp_add_per_level: 46
+    max_level: 10
+
 # --- общий уровень игрока (мета-прогресс) ---
 player_progress:
   max_level: 50
@@ -489,6 +554,9 @@ kit_buffs:
     # Рёв на 5 уровне
     roar_radius: 5
     roar_fear_seconds: 5
+    # Дополнительная длительность контроля зомби относительно игроков.
+    # 0 = столько же, сколько у игроков.
+    roar_zombie_extra_seconds: 1
 
     # Партиклы при срабатывании берсерка (отдельная анимация по уровню)
     particles:
@@ -599,6 +667,88 @@ skills:
       # Показывать preview визуализацию радиуса белыми партиклами
       show_preview: true
 
+    mark:
+      # 🎯 Метка охотника — следующий урон по цели усиливается
+      xp_cost: 14
+      cooldown_ms: 10000
+      cooldown_reduce_per_level_ms: 180
+      cooldown_min_ms: 4200
+      range_base: 18.0
+      range_per_level: 0.35
+      range_max: 24.0
+      duration_seconds: 4
+      bonus_damage_multiplier: 0.25
+
+    trap_arrow:
+      # 🪤 Капкан-стрела — ставит зону контроля при попадании
+      xp_cost: 16
+      cooldown_ms: 11000
+      cooldown_reduce_per_level_ms: 150
+      cooldown_min_ms: 4200
+      arm_window_seconds: 8
+      zone_duration_ticks: 50
+      zone_radius: 2.8
+      slow_seconds: 2
+      slow_amplifier: 1
+      # Внутренний анти-спам: как часто одной цели можно обновлять дебаффы зоны
+      internal_debuff_cooldown_ticks: 12
+      vulnerability_ticks: 30
+      ranged_bonus_multiplier: 0.10
+
+    ricochet:
+      # 🪙 Рикошет — следующая стрела перескакивает на вторую цель
+      xp_cost: 18
+      cooldown_ms: 13000
+      cooldown_reduce_per_level_ms: 150
+      cooldown_min_ms: 4800
+      arm_window_seconds: 9
+      radius: 6.0
+      damage_multiplier: 0.60
+
+  fighter:
+    combo:
+      # 🥊 Комбо бойца: 3 крита подряд заряжают усиленный 4-й удар
+      enabled: true
+      unlock_level: 3
+      required_critical_hits: 3
+      combo_window_ms: 4500
+      # 1.50 = 150% базового урона
+      finisher_damage_multiplier_base: 1.50
+      # Рост множителя за каждый уровень бойца (начиная с 2 уровня)
+      finisher_damage_multiplier_per_level: 0.04
+      finisher_damage_multiplier_cap: 2.10
+
+  berserk:
+    blood_dash:
+      # 🩸 Кровавый рывок — линия урона и контроль темпа
+      xp_cost: 22
+      cooldown_ms: 12000
+      cooldown_reduce_per_level_ms: 160
+      cooldown_min_ms: 5200
+      distance_base: 6.0
+      distance_per_level: 0.20
+      distance_max: 8.5
+      hit_radius: 1.25
+      damage_base: 4.2
+      damage_per_level: 0.35
+      knockback_power: 0.9
+      min_hits_for_roar_refund: 2
+      roar_refund_ms: 2000
+
+    execution:
+      # 🪓 Казнь — рывок по цели с бонусом добивания
+      xp_cost: 24
+      cooldown_ms: 14000
+      cooldown_reduce_per_level_ms: 170
+      cooldown_min_ms: 5200
+      range_base: 8.5
+      range_per_level: 0.20
+      range_max: 12.0
+      damage_base: 6.0
+      damage_per_level: 0.45
+      health_threshold: 0.35
+      execute_bonus_multiplier: 0.45
+
   gravitator:
     crush:
       # 🧲 Гравитационный пресс - прижимает зомби к земле
@@ -676,6 +826,27 @@ skills:
       crowd_duration_multiplier: 0.72
       crowd_resist_decay_per_enemy: 0.25
 
+    counter_stance:
+      # 🛡 Контрстойка — короткое окно парирования
+      xp_cost: 18
+      cooldown_ms: 15000
+      cooldown_reduce_per_level_ms: 160
+      cooldown_min_ms: 6000
+      window_ticks: 16
+      damage_reduction: 0.70
+      weakness_seconds: 2
+      weakness_amplifier: 0
+
+    feint:
+      # 🎭 Финт — шаг в сторону и усиление следующего удара
+      xp_cost: 16
+      cooldown_ms: 9000
+      cooldown_reduce_per_level_ms: 130
+      cooldown_min_ms: 3200
+      side_step_distance: 2.0
+      empower_window_seconds: 5
+      empower_damage_multiplier: 0.30
+
   cloner:
     summon:
       # 🧬 Призыв клона
@@ -717,6 +888,221 @@ skills:
       cooldown_reduce_per_level_ms: 130
       cooldown_min_ms: 3000
 
+    focus:
+      # 🎯 Фокус-команда — все призывы фокусят цель
+      xp_cost: 20
+      cooldown_ms: 8000
+      cooldown_reduce_per_level_ms: 130
+      cooldown_min_ms: 3200
+      range_base: 20.0
+      range_per_level: 0.5
+      range_max: 28.0
+      focus_seconds_base: 3
+      focus_seconds_per_level: 0
+
+    regroup:
+      # 🛡 Перегруппировка — подтягивает призывов и даёт защиту
+      xp_cost: 18
+      cooldown_ms: 9000
+      cooldown_reduce_per_level_ms: 140
+      cooldown_min_ms: 3400
+      shield_seconds_base: 4
+      shield_seconds_per_level: 0
+      shield_amplifier_base: 0
+      shield_amplifier_level8: 1
+
+    sacrifice:
+      # 🔥 Жертвенный импульс — жертва одного призыва ради бафа остальных
+      xp_cost: 22
+      cooldown_ms: 12000
+      cooldown_reduce_per_level_ms: 160
+      cooldown_min_ms: 4800
+      speed_seconds_base: 4
+      speed_seconds_per_level: 0
+      speed_amplifier: 1
+      damage_bonus_multiplier: 0.25
+      damage_bonus_seconds_base: 5
+      damage_bonus_seconds_per_level: 0
+
+  ping:
+    blink:
+      # ⚡ Пинг-рывок — быстрое смещение вперед
+      xp_cost: 18
+      cooldown_ms: 6200
+      cooldown_reduce_per_level_ms: 160
+      cooldown_min_ms: 2200
+      distance_base: 6.5
+      distance_per_level: 0.25
+      max_distance: 10.0
+      speed_seconds: 2
+      speed_amplifier: 1
+      phantom_trail_enabled: true
+      phantom_trail_duration_ticks: 40
+      phantom_trail_trigger_radius: 1.35
+      phantom_trail_damage: 2.0
+      # На зомби слепота не работает, поэтому им даётся замедление.
+      phantom_trail_blindness_seconds: 1
+      phantom_trail_zombie_slow_seconds: 2
+      phantom_trail_monster_weakness_seconds: 2
+      # 👻 Пакетный фантом: приманка-иллюзия после рывка
+      packet_phantom_enabled: true
+      # Открывается с этого уровня кита Пинг
+      packet_phantom_unlock_level: 8
+      # 50 тиков ~= 2.5 секунды
+      packet_phantom_duration_ticks: 50
+      packet_phantom_taunt_radius: 7.5
+      packet_phantom_show_name: true
+
+    pulse:
+      # 📶 Пинг-импульс — волна вокруг игрока
+      xp_cost: 26
+      cooldown_ms: 9800
+      cooldown_reduce_per_level_ms: 180
+      cooldown_min_ms: 3800
+      radius_base: 4.5
+      radius_per_level: 0.2
+      radius_max: 7.0
+      damage_base: 4.0
+      damage_per_level: 0.35
+      knockback_power: 1.0
+
+    jitter:
+      # 📡 Джиттер — серия ложных следов и сбой фокуса врагов
+      xp_cost: 20
+      cooldown_ms: 12000
+      cooldown_reduce_per_level_ms: 150
+      cooldown_min_ms: 4200
+      duration_seconds: 3
+      pulse_interval_ticks: 10
+      radius_base: 4.8
+      radius_per_level: 0.20
+      radius_max: 6.8
+      player_blindness_ticks: 18
+      zombie_slow_ticks: 24
+      monster_weakness_ticks: 24
+      # Внутренний анти-спам: как часто одной цели можно повторно дать дебафф
+      internal_debuff_cooldown_ticks: 10
+
+  harpooner:
+    anchor:
+      # ⚓ Якорный гарпун — вешает цепь на цель перед собой
+      xp_cost: 20
+      cooldown_ms: 9000
+      cooldown_reduce_per_level_ms: 170
+      cooldown_min_ms: 3600
+      range_base: 10.0
+      range_per_level: 0.2
+      range_max: 13.0
+      impact_damage_base: 3.0
+      impact_damage_per_level: 0.25
+
+    pull:
+      # ⛓ Подтяжка — тянет цель или подтягивает тебя к ней
+      xp_cost: 24
+      cooldown_ms: 12000
+      cooldown_reduce_per_level_ms: 180
+      cooldown_min_ms: 4600
+      target_pull_power_base: 1.05
+      target_pull_power_per_level: 0.03
+      self_pull_power_base: 1.15
+      self_pull_power_per_level: 0.035
+      switch_distance_base: 6.5
+      switch_distance_per_level: 0.12
+
+  cyborg:
+    slam:
+      # 🤖 Реактивный таран — прыжок и ударная волна при приземлении
+      xp_cost: 26
+      cooldown_ms: 12000
+      cooldown_reduce_per_level_ms: 170
+      cooldown_min_ms: 4800
+      jump_velocity: 1.08
+      arm_ticks: 6
+      max_air_ticks: 40
+      shock_radius_base: 4.0
+      shock_radius_per_level: 0.2
+      shock_radius_max: 6.2
+      damage_base: 5.0
+      damage_per_level: 0.4
+      knockback_power: 1.15
+      fire_ticks_base: 40
+      fire_ticks_per_level: 4
+
+  medic:
+    wave:
+      # 🩺 Полевая терапия — лечение и снятие дебаффов
+      xp_cost: 18
+      cooldown_ms: 10500
+      cooldown_reduce_per_level_ms: 140
+      cooldown_min_ms: 4000
+      radius_base: 5.5
+      radius_per_level: 0.2
+      radius_max: 7.8
+      heal_base: 4.0
+      heal_per_level: 0.35
+      regen_seconds: 4
+      regen_amplifier: 0
+
+  exorcist:
+    purge:
+      # ✝ Священный изгиб — волна урона по нежити и ослабление врагов
+      xp_cost: 24
+      cooldown_ms: 11000
+      cooldown_reduce_per_level_ms: 150
+      cooldown_min_ms: 4300
+      radius_base: 5.0
+      radius_per_level: 0.2
+      radius_max: 7.2
+      damage_base: 5.5
+      damage_per_level: 0.45
+      boss_damage_multiplier: 1.35
+      weakness_seconds: 4
+      weakness_amplifier: 0
+      knockback_power: 0.75
+
+  synergy:
+    # ✨ Кросс-кит синергии: комбо двух разных китов по одной цели в коротком окне
+    enabled: true
+    combo_window_ms: 2600
+    target_internal_cooldown_ms: 3200
+    search_radius: 11.0
+    bonus_damage: 2.5
+    expose_ticks: 30
+    slow_ticks: 24
+    slow_amplifier: 1
+
+  # 🧠 Общая система diminishing returns для контроля
+  control_dr:
+    enabled: true
+    # Применять DR только к эффектам, которые повесил плагин
+    plugin_only: true
+    # Окно затухания стаков DR
+    decay_window_ms: 6000
+    # Сколько стаков даёт каждая новая попытка контроля
+    stack_gain: 1.0
+    # Максимум стаков DR на цель
+    max_stacks: 4.0
+    # Снижение длительности за стак (0.22 = -22%)
+    duration_reduction_per_stack: 0.22
+    # Нижний предел множителя длительности
+    min_duration_multiplier: 0.25
+    # Минимальные длительности после DR
+    min_slow_duration_ticks: 8
+    min_stun_duration_ticks: 5
+    # SLOWNESS с таким амплифайером считается «станом»
+    stun_amplifier_threshold: 4
+    # Насколько быстро стаки спадают за одно окно
+    stack_decay_per_window: 1.0
+    # С какого числа стаков начинаем резать амплифайер
+    amplifier_reduce_start_stacks: 2.0
+
+  # 📣 Телеграфы опасных умений (звук + частицы)
+  telegraph:
+    enabled: true
+    particle_count: 18
+    sound_volume: 0.75
+    sound_pitch: 1.25
+
 # ⚡ Настройки системы маны (XP)
 mana:
   # Начальный максимум маны для новых игроков
@@ -725,8 +1111,10 @@ mana:
   # Например: 100 мaks = 0.1 в сек, 200 макс = 0.2 в сек, 300 макс = 0.3 в сек
   # Насколько увеличивается максимум маны при каждом использовании скилла
   max_increase_per_use: 0.5
-  # Какой процент от набранного сверх базового максимума переносится после полного ресета
-  # Формула: новый старт = initial_max + (max_за_прошлую_игру - initial_max) * reset_carryover_percent
+  # Какой процент прогресса текущей игры переносится после полного ресета.
+  # Перенос теперь аддитивный между играми:
+  # carry_bonus_next = carry_bonus_now + (max_текущей_игры - старт_этой_игры) * reset_carryover_percent
+  # новый старт = initial_max + carry_bonus_next
   reset_carryover_percent: 0.10
 
 # ⭐ Особые скиллы (не привязаны к китам)
@@ -776,6 +1164,17 @@ boss:
     # Скольжение при отступе босса
     backstep_speed_min: 0.8
     backstep_speed_max: 1.2
+
+  # Контр-игра босса против призывателя/петов
+  summoner_counter:
+    # Насколько босс режет урон по призванным существам/клонам
+    mob_damage_multiplier: 0.55
+    # Параметры ударной волны при адаптации к призывателю
+    shockwave_radius: 6.5
+    shockwave_power: 1.0
+    shockwave_tier_bonus: 0.18
+    shockwave_upward: 0.24
+    shockwave_upward_tier_bonus: 0.03
 
 # 🎴 Админские аниме-силы (Годжо/Сукуна)
 anime_powers:

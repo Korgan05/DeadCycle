@@ -40,7 +40,7 @@ public class BerserkListener implements Listener {
 
     private final DeadCyclePlugin plugin;
 
-    private final Map<UUID, Long> nextAllowedAt = new HashMap<>();
+    private static final Map<UUID, Long> nextAllowedAt = new HashMap<>();
 
     private final Map<UUID, FreezeEntry> frozen = new HashMap<>();
     private boolean freezeTaskStarted = false;
@@ -50,6 +50,21 @@ public class BerserkListener implements Listener {
 
     public BerserkListener(DeadCyclePlugin plugin) {
         this.plugin = plugin;
+    }
+
+    public static void reduceProcCooldown(UUID playerId, long millis) {
+        if (playerId == null)
+            return;
+        if (millis <= 0L)
+            return;
+
+        long now = System.currentTimeMillis();
+        long current = nextAllowedAt.getOrDefault(playerId, 0L);
+        if (current <= now)
+            return;
+
+        long reduced = Math.max(now, current - millis);
+        nextAllowedAt.put(playerId, reduced);
     }
 
     @EventHandler
@@ -257,6 +272,8 @@ public class BerserkListener implements Listener {
 
             PotionEffectType slowness = type("slowness");
             PotionEffectType weakness = type("weakness");
+            int zombieFearExtraSeconds = Math.max(0,
+                    plugin.getConfig().getInt("kit_buffs.berserk.roar_zombie_extra_seconds", 2));
 
             Location center = p.getLocation();
             World w = center.getWorld();
@@ -276,12 +293,16 @@ public class BerserkListener implements Listener {
                     if (ent.getLocation().distanceSquared(center) > r2)
                         continue;
 
-                    if (slowness != null)
-                        le.addPotionEffect(new PotionEffect(slowness, fearSeconds * 20, 255, true, false, true));
-                    if (weakness != null)
-                        le.addPotionEffect(new PotionEffect(weakness, fearSeconds * 20, 255, true, false, true));
+                    int effectSeconds = (le instanceof Zombie)
+                            ? fearSeconds + zombieFearExtraSeconds
+                            : fearSeconds;
 
-                    freeze(le, fearSeconds);
+                    if (slowness != null)
+                        le.addPotionEffect(new PotionEffect(slowness, effectSeconds * 20, 255, true, false, true));
+                    if (weakness != null)
+                        le.addPotionEffect(new PotionEffect(weakness, effectSeconds * 20, 255, true, false, true));
+
+                    freeze(le, effectSeconds);
 
                     if (lvl >= 10) {
                         if (le instanceof Zombie) {
@@ -294,7 +315,7 @@ public class BerserkListener implements Listener {
             }
 
             if (lvl >= 10 && zombiesForDot != null && !zombiesForDot.isEmpty()) {
-                startZombieDot(p, zombiesForDot, fearSeconds);
+                startZombieDot(p, zombiesForDot, fearSeconds + zombieFearExtraSeconds);
             }
 
             // Сам берсерк: старые уровни 5-6 получают тошноту/слепоту сразу.

@@ -30,6 +30,7 @@ public class ManaManager {
     private double resetCarryoverPercent;
 
     private final Map<UUID, Integer> pendingResetStartMax = new HashMap<>();
+    private final Map<UUID, Integer> pendingResetCarryBonus = new HashMap<>();
 
     public ManaManager(DeadCyclePlugin plugin) {
         this.plugin = plugin;
@@ -125,6 +126,11 @@ public class ManaManager {
         UUID uuid = p.getUniqueId();
         maxXpCache.put(uuid, initialMaxXp);
         p.setLevel(initialMaxXp);
+        PlayerDataStore store = plugin.playerData();
+        if (store != null) {
+            store.setInt(uuid, "xp.carry_bonus", 0);
+            store.setInt(uuid, "xp.round_start_max", initialMaxXp);
+        }
         saveMaxXp(uuid);
     }
 
@@ -139,22 +145,30 @@ public class ManaManager {
         for (Map.Entry<UUID, Integer> entry : pendingResetStartMax.entrySet()) {
             int carryMax = Math.max(initialMaxXp, entry.getValue());
             store.setInt(entry.getKey(), "xp.max", carryMax);
+            int carryBonus = Math.max(0, pendingResetCarryBonus.getOrDefault(entry.getKey(), 0));
+            store.setInt(entry.getKey(), "xp.carry_bonus", carryBonus);
+            store.setInt(entry.getKey(), "xp.round_start_max", carryMax);
         }
 
         for (Player p : Bukkit.getOnlinePlayers()) {
             UUID uuid = p.getUniqueId();
             int startMax = Math.max(initialMaxXp, pendingResetStartMax.getOrDefault(uuid, initialMaxXp));
+            int carryBonus = Math.max(0, pendingResetCarryBonus.getOrDefault(uuid, 0));
             maxXpCache.put(uuid, startMax);
             p.setLevel(startMax);
             store.setInt(uuid, "xp.max", startMax);
+            store.setInt(uuid, "xp.carry_bonus", carryBonus);
+            store.setInt(uuid, "xp.round_start_max", startMax);
         }
 
         pendingResetStartMax.clear();
+        pendingResetCarryBonus.clear();
         store.save();
     }
 
     public void prepareCarryoverForReset() {
         pendingResetStartMax.clear();
+        pendingResetCarryBonus.clear();
 
         PlayerDataStore store = plugin.playerData();
         if (store == null)
@@ -162,13 +176,13 @@ public class ManaManager {
 
         for (UUID uuid : store.getKnownPlayerIds()) {
             int progressedMax = Math.max(initialMaxXp, store.getInt(uuid, "xp.max", initialMaxXp));
-            pendingResetStartMax.put(uuid, calculateResetStartMax(progressedMax));
+            rememberPendingCarryover(uuid, progressedMax, store);
         }
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             UUID uuid = player.getUniqueId();
             int progressedMax = Math.max(initialMaxXp, getMaxXp(uuid));
-            pendingResetStartMax.put(uuid, calculateResetStartMax(progressedMax));
+            rememberPendingCarryover(uuid, progressedMax, store);
         }
     }
 
@@ -234,8 +248,27 @@ public class ManaManager {
 
     private void loadMaxXp(UUID uuid) {
         PlayerDataStore store = plugin.playerData();
+        if (store == null) {
+            maxXpCache.put(uuid, initialMaxXp);
+            return;
+        }
+
         int max = store.getInt(uuid, "xp.max", initialMaxXp);
         maxXpCache.put(uuid, max);
+
+        boolean changed = false;
+        if (!store.has(uuid, "xp.carry_bonus")) {
+            int migratedBonus = Math.max(0, max - initialMaxXp);
+            store.setInt(uuid, "xp.carry_bonus", migratedBonus);
+            changed = true;
+        }
+        if (!store.has(uuid, "xp.round_start_max")) {
+            store.setInt(uuid, "xp.round_start_max", max);
+            changed = true;
+        }
+        if (changed) {
+            store.save();
+        }
     }
 
     private void saveMaxXp(UUID uuid) {
@@ -274,9 +307,17 @@ public class ManaManager {
         plugin.playerData().save();
     }
 
-    private int calculateResetStartMax(int progressedMax) {
-        int gained = Math.max(0, progressedMax - initialMaxXp);
-        int carry = (int) Math.floor(gained * resetCarryoverPercent);
-        return Math.max(initialMaxXp, initialMaxXp + carry);
+    private void rememberPendingCarryover(UUID uuid, int progressedMax, PlayerDataStore store) {
+        int existingBonus = Math.max(0, store.getInt(uuid, "xp.carry_bonus", 0));
+        int roundStartMax = Math.max(initialMaxXp,
+                store.getInt(uuid, "xp.round_start_max", initialMaxXp + existingBonus));
+
+        int gainedThisRound = Math.max(0, progressedMax - roundStartMax);
+        int carryGain = (int) Math.floor(gainedThisRound * resetCarryoverPercent);
+        int nextBonus = Math.max(0, existingBonus + carryGain);
+        int nextStartMax = Math.max(initialMaxXp, initialMaxXp + nextBonus);
+
+        pendingResetCarryBonus.put(uuid, nextBonus);
+        pendingResetStartMax.put(uuid, nextStartMax);
     }
 }

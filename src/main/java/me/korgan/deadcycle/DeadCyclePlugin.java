@@ -9,6 +9,8 @@ import me.korgan.deadcycle.kit.*;
 import me.korgan.deadcycle.kit.berserk.BerserkListener;
 import me.korgan.deadcycle.kit.cloner.CloneKitManager;
 import me.korgan.deadcycle.kit.duelist.DuelistBossPassiveListener;
+import me.korgan.deadcycle.kit.fighter.FighterComboManager;
+import me.korgan.deadcycle.kit.harpooner.HarpoonerKitManager;
 import me.korgan.deadcycle.kit.summoner.SummonerKitManager;
 import me.korgan.deadcycle.mobs.*;
 import me.korgan.deadcycle.phase.*;
@@ -38,9 +40,13 @@ public class DeadCyclePlugin extends JavaPlugin {
 
     private KitManager kit;
     private KitMenu kitMenu;
+    private PlayerWorkbenchMenu workbenchMenu;
     private SkillManager skills;
+    private ControlDiminishingManager controlDr;
+    private FighterComboManager fighterCombo;
     private CloneKitManager cloneKit;
     private SummonerKitManager summonerKit;
+    private HarpoonerKitManager harpoonerKit;
     private DuelistBossPassiveListener duelistPassive;
 
     private BlockHealthManager blockHealth;
@@ -84,9 +90,13 @@ public class DeadCyclePlugin extends JavaPlugin {
 
         kit = new KitManager(this);
         kitMenu = new KitMenu(this);
+        workbenchMenu = new PlayerWorkbenchMenu(this);
+        controlDr = new ControlDiminishingManager(this);
         skills = new SkillManager(this);
+        fighterCombo = new FighterComboManager(this);
         cloneKit = new CloneKitManager(this);
         summonerKit = new SummonerKitManager(this);
+        harpoonerKit = new HarpoonerKitManager(this);
         duelistPassive = new DuelistBossPassiveListener(this);
 
         blockHealth = new BlockHealthManager(this);
@@ -138,8 +148,11 @@ public class DeadCyclePlugin extends JavaPlugin {
 
         Bukkit.getPluginManager().registerEvents(kit, this);
         Bukkit.getPluginManager().registerEvents(kitMenu, this);
+        Bukkit.getPluginManager().registerEvents(workbenchMenu, this);
+        Bukkit.getPluginManager().registerEvents(controlDr, this);
         Bukkit.getPluginManager().registerEvents(cloneKit, this);
         Bukkit.getPluginManager().registerEvents(summonerKit, this);
+        Bukkit.getPluginManager().registerEvents(harpoonerKit, this);
         Bukkit.getPluginManager().registerEvents(new BerserkListener(this), this);
         Bukkit.getPluginManager().registerEvents(duelistPassive, this);
 
@@ -152,6 +165,7 @@ public class DeadCyclePlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new BuilderToolListener(this), this);
         Bukkit.getPluginManager().registerEvents(new SkillListener(this), this);
         Bukkit.getPluginManager().registerEvents(new SkillItemProtectionListener(this), this);
+        Bukkit.getPluginManager().registerEvents(fighterCombo, this);
 
         // commands
         if (getCommand("dc") != null)
@@ -211,6 +225,10 @@ public class DeadCyclePlugin extends JavaPlugin {
             cloneKit.shutdown();
         if (summonerKit != null)
             summonerKit.shutdown();
+        if (harpoonerKit != null)
+            harpoonerKit.shutdown();
+        if (fighterCombo != null)
+            fighterCombo.shutdown();
 
         if (mana != null)
             mana.shutdown();
@@ -291,6 +309,12 @@ public class DeadCyclePlugin extends JavaPlugin {
             cloneKit.reload();
         if (summonerKit != null)
             summonerKit.reload();
+        if (harpoonerKit != null)
+            harpoonerKit.reload();
+        if (controlDr != null)
+            controlDr.reload();
+        if (fighterCombo != null)
+            fighterCombo.reload();
     }
 
     // ===== getters =====
@@ -317,6 +341,10 @@ public class DeadCyclePlugin extends JavaPlugin {
 
     public KitMenu kitMenu() {
         return kitMenu;
+    }
+
+    public PlayerWorkbenchMenu workbenchMenu() {
+        return workbenchMenu;
     }
 
     public BlockHealthManager blocks() {
@@ -379,12 +407,24 @@ public class DeadCyclePlugin extends JavaPlugin {
         return skills;
     }
 
+    public FighterComboManager fighterCombo() {
+        return fighterCombo;
+    }
+
+    public ControlDiminishingManager controlDr() {
+        return controlDr;
+    }
+
     public CloneKitManager cloneKit() {
         return cloneKit;
     }
 
     public SummonerKitManager summonerKit() {
         return summonerKit;
+    }
+
+    public HarpoonerKitManager harpoonerKit() {
+        return harpoonerKit;
     }
 
     public ManaManager mana() {

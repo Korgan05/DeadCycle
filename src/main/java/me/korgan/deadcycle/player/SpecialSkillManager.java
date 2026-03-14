@@ -7,8 +7,10 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Monster;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.entity.Zombie;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -83,8 +85,22 @@ public class SpecialSkillManager implements Listener {
         boolean hasAutoDodgeItem;
     }
 
+    private static final class SpecialProgressSnapshot {
+        int damageTaken;
+        int damageDealt;
+        int healWithRegen;
+        int manaSpent;
+        int regenProcs;
+        int autoRegenProcs;
+        int autoDodgeProcs;
+        boolean regenUnlocked;
+        boolean autoRegenUnlocked;
+        boolean autoDodgeUnlocked;
+    }
+
     private final Map<UUID, SkillItemCache> itemCache = new HashMap<>();
     private final Set<UUID> tickCandidates = new HashSet<>();
+    private final Map<UUID, SpecialProgressSnapshot> pendingResetSnapshots = new HashMap<>();
 
     private BukkitTask tickTask;
 
@@ -548,6 +564,133 @@ public class SpecialSkillManager implements Listener {
         }
     }
 
+    public void prepareProgressForReset() {
+        pendingResetSnapshots.clear();
+
+        PlayerDataStore store = plugin.playerData();
+        if (store != null) {
+            for (UUID uuid : store.getKnownPlayerIds()) {
+                pendingResetSnapshots.put(uuid, snapshotFromStore(uuid, store));
+            }
+        }
+
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            UUID uuid = p.getUniqueId();
+            ensureLoaded(uuid);
+            pendingResetSnapshots.put(uuid, snapshotFromRuntime(uuid));
+        }
+    }
+
+    public void restoreProgressAfterReset() {
+        if (pendingResetSnapshots.isEmpty())
+            return;
+
+        PlayerDataStore store = plugin.playerData();
+
+        for (Map.Entry<UUID, SpecialProgressSnapshot> entry : pendingResetSnapshots.entrySet()) {
+            UUID uuid = entry.getKey();
+            SpecialProgressSnapshot snapshot = entry.getValue();
+            if (uuid == null || snapshot == null)
+                continue;
+
+            applySnapshotToRuntime(uuid, snapshot);
+            if (store != null) {
+                applySnapshotToStore(store, uuid, snapshot);
+            }
+        }
+
+        if (store != null) {
+            store.save();
+        }
+
+        // Временные эффекты/переключатели текущего раунда сбрасываем.
+        regenSkillUntil.clear();
+        regenInteractUntil.clear();
+        autoRegenEnabled.clear();
+        autoDodgeEnabled.clear();
+        regenManaAccumulator.clear();
+        autoRegenManaAccumulator.clear();
+        outOfManaMessageUntil.clear();
+        lastSkillTickAt.clear();
+        itemCache.clear();
+        tickCandidates.clear();
+
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            syncUnlockedItems(online);
+            rebuildItemCache(online);
+        }
+
+        pendingResetSnapshots.clear();
+    }
+
+    private SpecialProgressSnapshot snapshotFromStore(UUID uuid, PlayerDataStore store) {
+        SpecialProgressSnapshot snapshot = new SpecialProgressSnapshot();
+        snapshot.damageTaken = store.getInt(uuid, "special.damage_taken", 0);
+        snapshot.damageDealt = store.getInt(uuid, "special.damage_dealt", 0);
+        snapshot.healWithRegen = store.getInt(uuid, "special.heal_with_regen", 0);
+        snapshot.manaSpent = store.getInt(uuid, "special.mana_spent", 0);
+        snapshot.regenProcs = store.getInt(uuid, "special.regen_procs", 0);
+        snapshot.autoRegenProcs = store.getInt(uuid, "special.auto_regen_procs", 0);
+        snapshot.autoDodgeProcs = store.getInt(uuid, "special.auto_dodge_procs", 0);
+        snapshot.regenUnlocked = store.getInt(uuid, "special.regen_unlocked", 0) == 1;
+        snapshot.autoRegenUnlocked = store.getInt(uuid, "special.auto_regen_unlocked", 0) == 1;
+        snapshot.autoDodgeUnlocked = store.getInt(uuid, "special.auto_dodge_unlocked", 0) == 1;
+        return snapshot;
+    }
+
+    private SpecialProgressSnapshot snapshotFromRuntime(UUID uuid) {
+        SpecialProgressSnapshot snapshot = new SpecialProgressSnapshot();
+        snapshot.damageTaken = getDamageTaken(uuid);
+        snapshot.damageDealt = getDamageDealt(uuid);
+        snapshot.healWithRegen = getHealWithRegen(uuid);
+        snapshot.manaSpent = getManaSpent(uuid);
+        snapshot.regenProcs = getRegenProcCount(uuid);
+        snapshot.autoRegenProcs = getAutoRegenProcCount(uuid);
+        snapshot.autoDodgeProcs = getAutoDodgeProcCount(uuid);
+        snapshot.regenUnlocked = isRegenUnlocked(uuid);
+        snapshot.autoRegenUnlocked = isAutoRegenUnlocked(uuid);
+        snapshot.autoDodgeUnlocked = isAutoDodgeUnlocked(uuid);
+        return snapshot;
+    }
+
+    private void applySnapshotToRuntime(UUID uuid, SpecialProgressSnapshot snapshot) {
+        damageTaken.put(uuid, (double) Math.max(0, snapshot.damageTaken));
+        damageDealt.put(uuid, (double) Math.max(0, snapshot.damageDealt));
+        healWithRegen.put(uuid, (double) Math.max(0, snapshot.healWithRegen));
+        manaSpent.put(uuid, (double) Math.max(0, snapshot.manaSpent));
+        regenProcCount.put(uuid, Math.max(0, snapshot.regenProcs));
+        autoRegenProcCount.put(uuid, Math.max(0, snapshot.autoRegenProcs));
+        autoDodgeProcCount.put(uuid, Math.max(0, snapshot.autoDodgeProcs));
+
+        if (snapshot.regenUnlocked)
+            regenUnlocked.add(uuid);
+        else
+            regenUnlocked.remove(uuid);
+
+        if (snapshot.autoRegenUnlocked)
+            autoRegenUnlocked.add(uuid);
+        else
+            autoRegenUnlocked.remove(uuid);
+
+        if (snapshot.autoDodgeUnlocked)
+            autoDodgeUnlocked.add(uuid);
+        else
+            autoDodgeUnlocked.remove(uuid);
+    }
+
+    private void applySnapshotToStore(PlayerDataStore store, UUID uuid, SpecialProgressSnapshot snapshot) {
+        store.setInt(uuid, "special.damage_taken", Math.max(0, snapshot.damageTaken));
+        store.setInt(uuid, "special.damage_dealt", Math.max(0, snapshot.damageDealt));
+        store.setInt(uuid, "special.heal_with_regen", Math.max(0, snapshot.healWithRegen));
+        store.setInt(uuid, "special.mana_spent", Math.max(0, snapshot.manaSpent));
+        store.setInt(uuid, "special.regen_procs", Math.max(0, snapshot.regenProcs));
+        store.setInt(uuid, "special.auto_regen_procs", Math.max(0, snapshot.autoRegenProcs));
+        store.setInt(uuid, "special.auto_dodge_procs", Math.max(0, snapshot.autoDodgeProcs));
+        store.setInt(uuid, "special.regen_unlocked", snapshot.regenUnlocked ? 1 : 0);
+        store.setInt(uuid, "special.auto_regen_unlocked", snapshot.autoRegenUnlocked ? 1 : 0);
+        store.setInt(uuid, "special.auto_dodge_unlocked", snapshot.autoDodgeUnlocked ? 1 : 0);
+    }
+
     public void resetAll() {
         damageTaken.clear();
         damageDealt.clear();
@@ -571,6 +714,7 @@ public class SpecialSkillManager implements Listener {
         lastSkillTickAt.clear();
         itemCache.clear();
         tickCandidates.clear();
+        pendingResetSnapshots.clear();
 
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (p == null || !p.isOnline())
@@ -588,6 +732,10 @@ public class SpecialSkillManager implements Listener {
             return;
         if (!(e.getEntity() instanceof Player p))
             return;
+        if (!(e instanceof EntityDamageByEntityEvent byEntity))
+            return;
+        if (!isValidProgressDamageSource(byEntity.getDamager()))
+            return;
 
         double amount = e.getDamage();
         UUID uuid = p.getUniqueId();
@@ -601,6 +749,8 @@ public class SpecialSkillManager implements Listener {
     @EventHandler
     public void onDamageDealt(EntityDamageByEntityEvent e) {
         if (e.isCancelled())
+            return;
+        if (!isValidProgressDamageTarget(e.getEntity()))
             return;
 
         Player damager = null;
@@ -620,6 +770,55 @@ public class SpecialSkillManager implements Listener {
         damageDealt.put(uuid, total);
 
         checkAutoDodgeUnlock(damager, damageTaken.getOrDefault(uuid, 0.0), total);
+    }
+
+    private boolean isValidProgressDamageSource(Entity damager) {
+        Entity source = resolveSourceEntity(damager);
+        if (source == null)
+            return false;
+        if (source instanceof Player)
+            return false;
+        if (isPlayerOwnedCompanion(source))
+            return false;
+        return source instanceof Zombie || source instanceof Monster;
+    }
+
+    private boolean isValidProgressDamageTarget(Entity entity) {
+        if (entity == null)
+            return false;
+        if (entity instanceof Player)
+            return false;
+        if (isPlayerOwnedCompanion(entity))
+            return false;
+        return entity instanceof Zombie || entity instanceof Monster;
+    }
+
+    private Entity resolveSourceEntity(Entity source) {
+        if (source instanceof Projectile projectile && projectile.getShooter() instanceof Entity shooter) {
+            return shooter;
+        }
+        return source;
+    }
+
+    private boolean isPlayerOwnedCompanion(Entity entity) {
+        if (entity == null)
+            return false;
+
+        if (plugin.cloneKit() != null) {
+            Byte cloneMark = entity.getPersistentDataContainer().get(plugin.cloneKit().cloneMarkKey(),
+                    PersistentDataType.BYTE);
+            if (cloneMark != null && cloneMark == (byte) 1)
+                return true;
+        }
+
+        if (plugin.summonerKit() != null) {
+            Byte summonMark = entity.getPersistentDataContainer().get(plugin.summonerKit().summonMarkKey(),
+                    PersistentDataType.BYTE);
+            if (summonMark != null && summonMark == (byte) 1)
+                return true;
+        }
+
+        return false;
     }
 
     @EventHandler
